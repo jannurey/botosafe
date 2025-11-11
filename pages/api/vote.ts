@@ -23,13 +23,11 @@ function encryptVote(plaintext: string): string {
   const iv = crypto.randomBytes(12);
   const keyBuffer = Buffer.from(AES_KEY, "hex");
   const cipher = crypto.createCipheriv("aes-256-gcm", keyBuffer, iv);
-
   const encrypted = Buffer.concat([
     cipher.update(plaintext, "utf8"),
     cipher.final(),
   ]);
   const tag = cipher.getAuthTag();
-
   return Buffer.concat([iv, tag, encrypted]).toString("hex");
 }
 
@@ -77,7 +75,6 @@ export default async function handler(
         `SELECT start_time, end_time FROM elections WHERE id = ?`,
         [electionId]
       );
-
       if (electionRows.length === 0) {
         await connection.rollback();
         res.status(400).json({ error: "Invalid election" });
@@ -87,7 +84,6 @@ export default async function handler(
       const now = new Date();
       const start = new Date(electionRows[0].start_time);
       const end = new Date(electionRows[0].end_time);
-
       if (now < start || now > end) {
         await connection.rollback();
         res
@@ -101,7 +97,6 @@ export default async function handler(
         `SELECT COUNT(*) AS count FROM votes WHERE user_id = ? AND election_id = ?`,
         [userId, electionId]
       );
-
       if ((voteCheckRows[0].count as number) > 0) {
         await connection.rollback();
         res

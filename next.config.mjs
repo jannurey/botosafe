@@ -26,8 +26,8 @@ const nextConfig = {
       "@mediapipe/camera_utils": "commonjs @mediapipe/camera_utils",
     });
 
-    return config;
-  },
-};
-
-export default nextConfig;
+        return config;
+      },
+    };
+    
+    export default nextConfig;

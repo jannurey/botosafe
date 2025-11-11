@@ -31,6 +31,7 @@ const LoginPage = () => {
       if (!res.ok) {
         setStatusMessage(data.message || "Login failed.");
       } else {
+<<<<<<< HEAD
         // ✅ Save user info
         localStorage.setItem("email", email);
         localStorage.setItem("userId", data.userId);
@@ -41,6 +42,24 @@ const LoginPage = () => {
           router.push("/admin/dashboard");
         } else {
           router.push("/signin/verify-otp");
+=======
+        // ✅ Save user info (email and userId will be used by OTP step)
+        localStorage.setItem("email", email);
+        if (data.userId) localStorage.setItem("userId", String(data.userId));
+        if (data.role) localStorage.setItem("role", data.role);
+
+        // If server requires OTP, go to verify-otp regardless of role
+        if (data.otpRequired) {
+          router.push("/signin/verify-otp");
+          return;
+        }
+
+        // Otherwise, user is fully authenticated server-side; decide based on role
+        if (data.role === "admin") {
+          router.push("/admin/dashboard");
+        } else {
+          router.push("/"); // or the app's logged-in landing
+>>>>>>> d425447 (Initial commit)
         }
       }
     } finally {
@@ -51,7 +70,11 @@ const LoginPage = () => {
   return (
     <>
       <Header />
+<<<<<<< HEAD
       <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-white via-purple-100 to-red-100 px-4 py-20">
+=======
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-white via-[#FEEBF6] to-[#FFD4D4] overflow-x-hidden transition-all px-4 py-20">
+>>>>>>> d425447 (Initial commit)
         {/* Bubbles */}
         <div className="absolute top-0 left-0 h-60 w-60 rounded-full bg-red-200/30 blur-3xl animate-pulse" />
         <div className="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-purple-200/30 blur-3xl animate-pulse" />
@@ -124,6 +147,17 @@ const LoginPage = () => {
               {isSubmitting ? "Logging in..." : "Log In"}
             </button>
           </form>
+<<<<<<< HEAD
+=======
+          <p className="text-center text-sm text-[#791010]">
+            <a
+              href="/signin/login/forgot-password"
+              className="underline hover:text-[#9B1B1B]"
+            >
+              Forgot Password?
+            </a>
+          </p>
+>>>>>>> d425447 (Initial commit)
 
           <p className="text-center text-sm text-[#791010]">
             Don&apos;t have an account?{" "}

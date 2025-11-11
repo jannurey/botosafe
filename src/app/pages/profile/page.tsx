@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FiSettings, FiEdit2 } from "react-icons/fi";
 import Header from "@/components/partials/Header";
@@ -30,23 +30,103 @@ type User = {
   gender?: string;
 };
 
+type Election = {
+  id: number;
+  title: string;
+  status: string;
+  start_time: string;
+};
+type Position = { id: number; name: string };
+
+type Achievement = {
+  id?: number;
+  title: string;
+  description?: string;
+};
+
+/* Helper for status label */
+const formatStatusLabel = (
+  s: string
+): "Approved" | "Pending" | "Declined" | "Withdrawn" | string => {
+  const ls = s?.toLowerCase?.() ?? "";
+  if (ls === "approved") return "Approved";
+  if (ls === "pending") return "Pending";
+  if (ls === "declined") return "Declined";
+  if (ls === "withdrawn") return "Withdrawn";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  // core states
+  const [loading, setLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [appsLoading, setAppsLoading] = useState<boolean>(true);
+  const [applications, setApplications] = useState<Candidate[]>([]);
+
+  // UI state
   const [activeModal, setActiveModal] = useState<
     "edit" | "applications" | null
   >(null);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [menuOpen, setMenuOpen] = useState<boolean>(false);
+  const [showConfirm, setShowConfirm] = useState<boolean>(false);
 
-  const [applications, setApplications] = useState<Candidate[]>([]);
-  const [appsLoading, setAppsLoading] = useState(true);
+  // edit profile / change password
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState<boolean>(false);
+  const [profileSuccessMessage, setProfileSuccessMessage] =
+    useState<string>("");
 
-  // Fetch user
+  const [isChangePasswordOpen, setIsChangePasswordOpen] =
+    useState<boolean>(false);
+  const [cpCurrent, setCpCurrent] = useState<string>("");
+  const [cpNew, setCpNew] = useState<string>("");
+  const [cpConfirm, setCpConfirm] = useState<string>("");
+  const [cpLoading, setCpLoading] = useState<boolean>(false);
+  const [cpError, setCpError] = useState<string>("");
+
+  // Filing modal (used for both new filing and edit existing pending)
+  const [isFilingModalOpen, setIsFilingModalOpen] = useState<boolean>(false);
+  const [latestElection, setLatestElection] = useState<Election | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const [formError, setFormError] = useState<string>("");
+  const [selectedPositionId, setSelectedPositionId] = useState<string>("");
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [partylist, setPartylist] = useState<string>("");
+  const [photoUrl, setPhotoUrl] = useState<string>(""); // preview URL (existing or newly chosen)
+  const [photoFile, setPhotoFile] = useState<File | null>(null); // newly selected
+  const [cocUrl, setCocUrl] = useState<string>(""); // existing coc url preview
+  const [cocFile, setCocFile] = useState<File | null>(null); // newly selected
+  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+
+  // Filing context: if editing existing candidate, hold its id and original snapshot
+  const [editingCandidateId, setEditingCandidateId] = useState<number | null>(
+    null
+  );
+  const [originalCandidateSnapshot, setOriginalCandidateSnapshot] =
+    useState<Candidate | null>(null);
+
+  /* small CSS injected for pulse + card gradient */
   useEffect(() => {
-    const fetchUser = async () => {
+    if (typeof window === "undefined") return;
+    const style = document.createElement("style");
+    style.innerHTML = `
+      @keyframes pulse-slow {
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,193,7,0.12); }
+        50% { transform: scale(1.02); box-shadow: 0 0 12px 6px rgba(255,193,7,0.10); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,193,7,0); }
+      }
+      .pulse-pending { animation: pulse-slow 1.6s infinite ease-in-out; }
+      .card-gradient { background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,240,240,0.7)); border: 1px solid rgba(151,16,16,0.08); }
+    `;
+    document.head.appendChild(style);
+    return () => void document.head.removeChild(style);
+  }, []);
+
+  /* Fetch current user */
+  useEffect(() => {
+    const fetchUser = async (): Promise<void> => {
       try {
         const res = await fetch("/api/users/me", {
           method: "GET",
@@ -68,26 +148,27 @@ export default function ProfilePage() {
     fetchUser();
   }, [router]);
 
-  // Fetch user applications
+  /* Fetch user applications (use user.id from session context) */
   useEffect(() => {
     if (!user) return;
-    const fetchApplications = async () => {
+    const fetchApps = async (): Promise<void> => {
       try {
         setAppsLoading(true);
-        const res = await fetch("/api/candidates");
+        const res = await fetch(
+          `/api/candidates?user_id=${encodeURIComponent(String(user.id))}`
+        );
         if (!res.ok) throw new Error("Failed to fetch applications");
         const data: Candidate[] = await res.json();
-        const myApps = data.filter(
-          (c) => c.status !== "withdrawn" && c.user_id === user.id
+        setApplications(
+          data.filter((c) => c.status?.toLowerCase() !== "withdrawn")
         );
-        setApplications(myApps);
       } catch (err) {
         console.error(err);
       } finally {
         setAppsLoading(false);
       }
     };
-    fetchApplications();
+    fetchApps();
   }, [user]);
 
   const handleWithdraw = async (id: number) => {
@@ -154,7 +235,6 @@ export default function ProfilePage() {
       </main>
     );
   }
-
   if (!user) return null;
 
   return (

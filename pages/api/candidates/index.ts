@@ -225,17 +225,16 @@ export default async function handler(
         res.status(404).json({ error: "Candidate not found" });
         return;
       }
-
       res.status(200).json({ message: "Candidate deleted successfully" });
       return;
     }
 
-    // ❌ Unsupported method
+    // Method not allowed
     res.setHeader("Allow", ["GET", "POST", "PATCH", "DELETE"]);
     res.status(405).end(`Method ${req.method} Not Allowed`);
     return;
   } catch (error) {
-    console.error("❌ API Error:", error);
+    console.error("API candidates error", error);
     res.status(500).json({ error: "Server error" });
   }
 }

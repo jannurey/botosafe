@@ -49,3 +49,16 @@ export async function ensureAdminExists() {
     console.error("❌ Error ensuring admin exists:", error);
   }
 }
+<<<<<<< HEAD
+=======
+
+// 🔹 New helper: check if email is admin
+export async function isAdminEmail(email: string): Promise<boolean> {
+  if (!email) return false;
+  const [rows] = await pool.query<UserRow[]>(
+    "SELECT role FROM users WHERE email = ? LIMIT 1",
+    [email]
+  );
+  return rows.length > 0 && rows[0].role === "admin";
+}
+>>>>>>> d425447 (Initial commit)

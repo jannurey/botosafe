@@ -1,4 +1,3 @@
-// app/(admin)/admin-dashboard.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -11,21 +10,6 @@ import {
   VictoryPie,
   VictoryStack,
 } from "victory";
-
-type Summary = {
-  voters: number;
-  candidates: number;
-  voted: number;
-  election: {
-    id: number;
-    title: string;
-    status: string;
-    start_time: string;
-    end_time: string;
-    timeRemaining?: string | null;
-  } | null;
-  courses?: CourseData[];
-};
 
 type Result = {
   position_name: string;
@@ -41,6 +25,21 @@ type CourseData = {
   turnout?: number;
 };
 
+/* Summary shape returned by /api/dashboard/summary */
+type Summary = {
+  election?: {
+    id?: number;
+    title: string;
+    status: string;
+    start_time: string;
+    end_time: string;
+  };
+  voters: number;
+  candidates: number;
+  voted: number;
+  courses?: CourseData[];
+};
+
 const AdminDashboard: React.FC = () => {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [results, setResults] = useState<Result[]>([]);
@@ -53,19 +52,33 @@ const AdminDashboard: React.FC = () => {
         fetch("/api/dashboard/summary"),
         fetch("/api/results"),
       ]);
-      const summaryData: Summary = await summaryRes.json();
-      const resultsData: { results: Result[] } = await resultsRes.json();
-      setSummary(summaryData);
-      setResults(resultsData.results || []);
+
+      if (summaryRes.ok) {
+        const summaryData: Summary = await summaryRes.json();
+        setSummary(summaryData);
+      } else {
+        console.warn("/api/dashboard/summary returned", summaryRes.status);
+        setSummary(null);
+      }
+
+      if (resultsRes.ok) {
+        const resultsData: { results: Result[] } = await resultsRes.json();
+        setResults(resultsData.results || []);
+      } else {
+        console.warn("/api/results returned", resultsRes.status);
+        setResults([]);
+      }
     } catch (e) {
       console.error("Failed to fetch data", e);
+      setSummary(null);
+      setResults([]);
     }
   };
 
   useEffect(() => {
     fetchData();
-    const id = setInterval(fetchData, 5000);
-    return () => clearInterval(id);
+    const id = window.setInterval(fetchData, 5000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -88,8 +101,8 @@ const AdminDashboard: React.FC = () => {
     };
 
     tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
   }, [summary?.election]);
 
   const formatTime = (secs: number | null): string => {
@@ -98,7 +111,10 @@ const AdminDashboard: React.FC = () => {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
-    return `${h} hrs : ${m} mins : ${s} s`;
+    const hh = String(h).padStart(2, "0");
+    const mm = String(m).padStart(2, "0");
+    const ss = String(s).padStart(2, "0");
+    return `${hh} : ${mm} : ${ss}`;
   };
 
   const groupedResults = results.reduce<Record<string, Result[]>>((acc, r) => {
@@ -109,7 +125,6 @@ const AdminDashboard: React.FC = () => {
   const courseData: CourseData[] = summary?.courses ?? [];
   const totalVoters: number = summary?.voters ?? 0;
 
-  // Assuming `courseData` is from your API response
   const courses = Array.from(new Set(courseData.map((d) => d.course)));
 
   const yearLevels = Array.from(
@@ -124,10 +139,12 @@ const AdminDashboard: React.FC = () => {
   const makeVoterTicks = (max: number): number[] => {
     if (max <= 10) return Array.from({ length: max + 1 }, (_, i) => i);
     const step = Math.ceil(max / 9);
-    return Array.from(
+    const ticks = Array.from(
       { length: Math.floor(max / step) + 1 },
       (_, i) => i * step
-    ).concat(max);
+    );
+    if (ticks[ticks.length - 1] !== max) ticks.push(max);
+    return ticks;
   };
   const voterTicks = makeVoterTicks(totalVoters);
 
@@ -135,8 +152,8 @@ const AdminDashboard: React.FC = () => {
   const voterTurnout: number =
     summary && summary.voters > 0 ? (summary.voted / summary.voters) * 100 : 0;
 
-  let participationPrediction: string;
-  let participationColor: string;
+  let participationPrediction: string = "Analyzing...";
+  let participationColor: string = "#9E9E9E";
 
   if (voterTurnout >= 80) {
     participationPrediction = "High Participation";
@@ -167,7 +184,7 @@ const AdminDashboard: React.FC = () => {
     }
   }
 
-  // Example of previous turnout
+  // Example of previous turnout (placeholder)
   const previousTurnout = 70;
   const decline = previousTurnout - voterTurnout;
   if (decline > 15) {
@@ -197,7 +214,7 @@ const AdminDashboard: React.FC = () => {
               label: "TOTAL WHO VOTED",
               value: summary.voted,
               color: "#388E3C",
-              remainder: summary.voters - summary.voted,
+              remainder: Math.max(summary.voters - summary.voted, 0),
             },
           ].map((item, i) => (
             <div
@@ -206,8 +223,11 @@ const AdminDashboard: React.FC = () => {
             >
               <VictoryPie
                 data={[
-                  { x: "val", y: item.value },
-                  { x: "rem", y: item.remainder ?? 1 },
+                  { x: "val", y: item.value ?? 0 },
+                  {
+                    x: "rem",
+                    y: item.remainder ?? Math.max(1, item.value ?? 0),
+                  },
                 ]}
                 innerRadius={44}
                 labels={() => null}
@@ -438,7 +458,7 @@ const AdminDashboard: React.FC = () => {
                     const entry = courseData.find(
                       (d) => d.course === course && d.year_level === year
                     );
-                    return { x: course, y: entry ? entry.turnout : 0 };
+                    return { x: course, y: entry ? entry.turnout ?? 0 : 0 };
                   })}
                   labels={({ datum }) => (datum.y > 0 ? datum.y : "")}
                 />

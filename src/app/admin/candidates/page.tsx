@@ -292,7 +292,6 @@ export default function AdminCandidatesPage() {
               ))}
             </tbody>
           </table>
-
           {currentItems.length === 0 && (
             <div className="text-center py-6 text-gray-500 text-sm">
               No candidates found.
@@ -308,7 +307,6 @@ export default function AdminCandidatesPage() {
               {Math.min(startIdx + itemsPerPage, filteredCandidates.length)} of{" "}
               {filteredCandidates.length}
             </span>
-
             <div className="flex gap-2">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}

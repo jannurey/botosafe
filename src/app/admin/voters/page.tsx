@@ -5,13 +5,13 @@ import React, { useEffect, useState } from "react";
 
 type Voter = {
   id: number;
+  school_id: number;
   fullname: string;
   email: string;
   course: string | null;
-  year_level: string | number | null;
+  year_level: string | number | null; // declared year: "1st Year" | "2nd Year" | ... or numeric
   age: number | null;
-  gender: string | null;
-  school_id: string | null;
+  gender: string;
   role: string;
   approval_status: string | null;
   user_status: string | null;

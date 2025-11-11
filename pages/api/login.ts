@@ -31,7 +31,6 @@ export default async function handler(
   }
 
   const { email, password } = req.body as { email?: string; password?: string };
-
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
   }
@@ -57,7 +56,6 @@ export default async function handler(
       "SELECT * FROM users WHERE email = ? LIMIT 1",
       [email]
     );
-
     if (rows.length === 0) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
