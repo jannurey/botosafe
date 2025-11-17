@@ -506,11 +506,10 @@ export default function CandidatesPage() {
                       onClick={() => setSelectedCandidate(c)} // open modal
                     >
                       <div className="w-full h-48 relative">
-                        <Image
+                        <img
                           src={c.photo_url || "/images/default-avatar.png"}
                           alt={c.fullname}
-                          fill
-                          className="object-cover"
+                          className="absolute inset-0 w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                         <div className="absolute left-4 bottom-3 text-white">
@@ -565,14 +564,12 @@ export default function CandidatesPage() {
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-4">
                         <div className="relative">
-                          <Image
+                          <img
                             src={
                               selectedCandidate.photo_url ||
                               "/images/default-avatar.png"
                             }
                             alt={selectedCandidate.fullname}
-                            width={80}
-                            height={80}
                             className="w-20 h-20 object-cover rounded-full border-2 border-white"
                           />
                           {selectedCandidate.partylist && (
@@ -903,11 +900,10 @@ export default function CandidatesPage() {
                           />
                           {photoUrl && (
                             <div className="mt-3 relative w-24 h-24 mx-auto">
-                              <Image
+                              <img
                                 src={photoUrl}
                                 alt="Preview"
-                                fill
-                                className="object-cover rounded-lg border"
+                                className="w-full h-full object-cover rounded-lg border"
                               />
                             </div>
                           )}
