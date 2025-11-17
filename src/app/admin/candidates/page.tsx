@@ -489,14 +489,11 @@ export default function AdminCandidatesPage() {
                             className="object-cover w-full h-full"
                           />
                         ) : (
-                          // Cloudinary or external image - use Next.js Image
-                          <Image
+                          // Cloudinary image - use regular img tag to avoid Next.js optimization conflicts
+                          <img
                             src={viewCandidate.photo_url}
                             alt={viewCandidate.fullname}
-                            width={128}
-                            height={128}
                             className="object-cover w-full h-full"
-                            unoptimized={false}
                           />
                         )
                       ) : (

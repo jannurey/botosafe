@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
         pathname: "/**",
       },
     ],
+    unoptimized: false, // Enable image optimization
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   // Increase API body size limit for file uploads
   experimental: {
