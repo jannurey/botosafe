@@ -248,7 +248,10 @@ export default async function handler(
 
     // 🟩 GET ALL CANDIDATES
     if (req.method === "GET") {
-      const { data: rows, error } = await supabaseAdmin
+      // Check if filtering by user_id
+      const { user_id } = req.query;
+      
+      let query = supabaseAdmin
         .from('candidates')
         .select(`
           id,
@@ -275,8 +278,14 @@ export default async function handler(
             type,
             created_at
           )
-        `)
-        .order('created_at', { ascending: false });
+        `);
+      
+      // Filter by user_id if provided
+      if (user_id) {
+        query = query.eq('user_id', parseInt(user_id as string));
+      }
+      
+      const { data: rows, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
         console.error("Supabase query error:", error);
