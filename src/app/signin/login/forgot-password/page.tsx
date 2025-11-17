@@ -51,7 +51,7 @@ const ForgotPasswordPage = () => {
             Forgot Password
           </h1>
           <p className="text-center text-sm text-[#791010]">
-            Enter your email and we'll send a link to reset your password.
+            Enter your email and we&apos;ll send a link to reset your password.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">

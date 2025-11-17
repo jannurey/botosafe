@@ -61,16 +61,34 @@ export function middleware(req: NextRequest) {
     if (pathname.startsWith(pre)) return NextResponse.next();
   }
 
+  // Allow access to face registration page with temporary token
+  if (pathname === "/signin/face-register") {
+    // Check for either auth token or temp auth token
+    const authToken = cookies.get("authToken")?.value ?? cookies.get("token")?.value;
+    const tempAuthToken = cookies.get("tempAuthToken")?.value;
+    const tempLogin = cookies.get("tempLogin")?.value;
+    
+    if (authToken || tempAuthToken || tempLogin) {
+      // Allow access with either token
+      return NextResponse.next();
+    }
+    
+    // No token present - redirect to login
+    const loginUrl = new URL("/signin/login", req.url);
+    loginUrl.searchParams.set("returnTo", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
   if (!isProtected(pathname)) {
     // not a protected path — let it through
     return NextResponse.next();
   }
 
   // Check for auth cookie (adjust name if different)
-  const authToken =
-    cookies.get("authToken")?.value ?? cookies.get("token")?.value;
+  const authToken = cookies.get("authToken")?.value ?? cookies.get("token")?.value;
+  const tempLogin = cookies.get("tempLogin")?.value;
 
-  if (!authToken) {
+  if (!authToken && !tempLogin) {
     // Not authenticated — redirect to signin/login
     const loginUrl = new URL("/signin/login", req.url);
     // Add a returnTo param so user can go back after login (optional)

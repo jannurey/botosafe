@@ -1,5 +1,5 @@
 import type { NextApiRequest } from "next";
-import { pool } from "@/configs/database";
+import { supabaseAdmin } from "@/configs/supabase";
 
 type AttemptLabel = "genuine" | "impostor" | "unknown";
 type EventSource = "login" | "vote" | "enroll" | "other";
@@ -9,7 +9,7 @@ type EventSource = "login" | "vote" | "enroll" | "other";
 function getClientIp(req: NextApiRequest): string | null {
   const xff = (req.headers["x-forwarded-for"] as string) || "";
   // Use leftmost address from XFF (adjust if your proxy chain requires last hop)
-  let ip = xff.split(",")[0].trim() || (req.socket as any)?.remoteAddress || "";
+  let ip = xff.split(",")[0].trim() || (req.socket as { remoteAddress?: string })?.remoteAddress || "";
   if (!ip) return null;
 
   // Strip brackets for IPv6 like [::1] or [2001:db8::1]:1234
@@ -46,20 +46,25 @@ function toDbId(raw: unknown): string | null {
 }
 
 async function userExists(id: string): Promise<boolean> {
-  const [rows] = await pool.query("SELECT 1 FROM users WHERE id = ? LIMIT 1", [
-    id,
-  ]);
-  // @ts-ignore mysql2 RowDataPacket[]
-  return Array.isArray(rows) && rows.length > 0;
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('id', id)
+    .limit(1)
+    .single();
+  
+  return !error && !!data;
 }
 
 async function electionExists(id: string): Promise<boolean> {
-  const [rows] = await pool.query(
-    "SELECT 1 FROM elections WHERE id = ? LIMIT 1",
-    [id]
-  );
-  // @ts-ignore mysql2 RowDataPacket[]
-  return Array.isArray(rows) && rows.length > 0;
+  const { data, error } = await supabaseAdmin
+    .from('elections')
+    .select('id')
+    .eq('id', id)
+    .limit(1)
+    .single();
+  
+  return !error && !!data;
 }
 
 export async function logFaceVerificationEvent(opts: {
@@ -93,11 +98,11 @@ export async function logFaceVerificationEvent(opts: {
       other: true,
     };
     const attemptLabel: AttemptLabel =
-      opts.attemptLabel && (allowedAttempt as any)[opts.attemptLabel]
+      opts.attemptLabel && allowedAttempt[opts.attemptLabel as keyof typeof allowedAttempt]
         ? opts.attemptLabel
         : "genuine";
     const source: EventSource =
-      opts.source && (allowedSource as any)[opts.source]
+      opts.source && allowedSource[opts.source as keyof typeof allowedSource]
         ? opts.source
         : "login";
 
@@ -113,44 +118,34 @@ export async function logFaceVerificationEvent(opts: {
       electionIdStr = null; // FK-safe fallback
     }
 
-    await pool.query(
-      `
-      INSERT INTO face_verification_events
-        (user_id, election_id, decision_match, best_score, median_score, threshold, attempt_label, source, client_ip, user_agent)
-      VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, INET6_ATON(?), ?)
-    `,
-      [
-        userIdStr,
-        electionIdStr,
-        opts.decisionMatch ? 1 : 0,
-        opts.bestScore ?? null,
-        opts.medianScore ?? null,
-        opts.threshold ?? null,
-        attemptLabel,
-        source,
-        ip,
-        userAgent,
-      ]
-    );
-  } catch (e: any) {
-    // Handle FK race (parent deleted after exists-check) or other FK violations
-    const errno = e?.errno ?? e?.code;
-    if (
-      errno === 1452 ||
-      e?.code === "ER_NO_REFERENCED_ROW_2" ||
-      e?.code === "ER_NO_REFERENCED_ROW"
-    ) {
-      // Swallow: logging must not affect main flow
-      // eslint-disable-next-line no-console
-      console.warn(
-        "FK prevented logging face_verification_event:",
-        e?.message ?? e
-      );
+    // Insert the face verification event
+    const { error: insertError } = await supabaseAdmin
+      .from('face_verification_events')
+      .insert({
+        user_id: parseInt(userIdStr),
+        election_id: electionIdStr ? parseInt(electionIdStr) : null,
+        decision_match: opts.decisionMatch,
+        best_score: opts.bestScore ?? null,
+        median_score: opts.medianScore ?? null,
+        threshold: opts.threshold ?? null,
+        attempt_label: attemptLabel,
+        source: source,
+        client_ip: ip,
+        user_agent: userAgent
+      });
+
+    if (insertError) {
+      console.error("Supabase insert error:", insertError);
       return;
     }
-
+  } catch (e: unknown) {
+    // Handle FK race (parent deleted after exists-check) or other FK violations
+    // Swallow: logging must not affect main flow
     // eslint-disable-next-line no-console
-    console.error("Failed to log face_verification_event:", e);
+    console.warn(
+      "Failed to log face_verification_event:",
+      e instanceof Error ? e.message : String(e)
+    );
+    return;
   }
 }

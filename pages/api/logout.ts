@@ -1,6 +1,5 @@
 // pages/api/logout.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { serialize } from "cookie";
 
 interface LogoutResponse {
   message?: string;
@@ -15,16 +14,11 @@ export default function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  res.setHeader(
-    "Set-Cookie",
-    serialize("token", "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/", // must match the path where token was set
-      expires: new Date(0), // immediately expire
-    })
-  );
+  const cookieHeader = [
+    `authToken=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+  ];
+  
+  res.setHeader("Set-Cookie", cookieHeader);
 
   return res.status(200).json({ message: "Logged out successfully" });
 }

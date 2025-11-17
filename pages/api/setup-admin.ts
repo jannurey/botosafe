@@ -1,9 +1,8 @@
 // pages/api/setup-admin.ts
 import { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface UserRow extends RowDataPacket {
+interface UserRow {
   id: number;
   email: string;
 }
@@ -23,17 +22,33 @@ export default async function handler(
     }
 
     // 🔍 Check if admin exists
-    const [check] = await pool.query<UserRow[]>(
-      "SELECT * FROM users WHERE email = ?",
-      [email]
-    );
+    const { data: check, error: checkError } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .limit(1);
 
-    if (check.length === 0) {
+    if (checkError) {
+      console.error("Supabase query error:", checkError);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!check || check.length === 0) {
       // Insert default admin
-      await pool.query<ResultSetHeader>(
-        "INSERT INTO users (fullname, email, password, role) VALUES (?, ?, ?, ?)",
-        ["System Admin", email, "ENV_ADMIN", "admin"]
-      );
+      const { error: insertError } = await supabaseAdmin
+        .from('users')
+        .insert({
+          fullname: "System Admin",
+          email: email,
+          password: "ENV_ADMIN",
+          role: "admin"
+        });
+
+      if (insertError) {
+        console.error("Supabase insert error:", insertError);
+        return res.status(500).json({ message: "Database error" });
+      }
+
       return res.status(200).json({ message: "Default admin inserted" });
     }
 

@@ -2,7 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { pool } from "@/configs/database";
+import { supabaseAdmin } from "@/configs/supabase";
 
 export default async function handler(
   req: NextApiRequest,
@@ -23,18 +23,26 @@ export default async function handler(
       .update(String(token))
       .digest("hex");
 
-    const [rows] = await pool.execute(
-      `SELECT pr.id, pr.user_id, pr.expires_at, u.email FROM password_resets pr
-       JOIN users u ON u.id = pr.user_id
-       WHERE pr.token_hash = ? AND u.email = ?`,
-      [tokenHash, email]
-    );
-    const matches = rows as any[];
-    if (!matches.length) {
+    // Get the password reset record with user info
+    const { data: resetRows, error: resetError } = await supabaseAdmin
+      .from('password_resets')
+      .select(`
+        id,
+        user_id,
+        expires_at,
+        users (
+          email
+        )
+      `)
+      .eq('token_hash', tokenHash)
+      .eq('users.email', email)
+      .single();
+
+    if (resetError || !resetRows) {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
-    const row = matches[0];
+    const row = resetRows;
     if (new Date(row.expires_at).getTime() < Date.now()) {
       return res.status(400).json({ message: "Token has expired" });
     }
@@ -42,13 +50,27 @@ export default async function handler(
     // Hash the new password (match the hashing used elsewhere in your app)
     const hashedPassword = await bcrypt.hash(String(password), 10);
 
-    await pool.execute(`UPDATE users SET password = ? WHERE id = ?`, [
-      hashedPassword,
-      row.user_id,
-    ]);
-    await pool.execute(`DELETE FROM password_resets WHERE user_id = ?`, [
-      row.user_id,
-    ]);
+    // Update user's password
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('id', row.user_id);
+
+    if (updateError) {
+      console.error("Supabase update error:", updateError);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    // Delete the password reset token
+    const { error: deleteError } = await supabaseAdmin
+      .from('password_resets')
+      .delete()
+      .eq('user_id', row.user_id);
+
+    if (deleteError) {
+      console.error("Supabase delete error:", deleteError);
+      // Continue anyway since the password was updated
+    }
 
     return res.status(200).json({ message: "Password has been updated" });
   } catch (err) {

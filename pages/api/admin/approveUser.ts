@@ -1,7 +1,6 @@
 // pages/api/admin/approveUser.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { ResultSetHeader } from "mysql2"; // ✅ Strict type
+import { supabaseAdmin } from "@/configs/supabase";
 
 interface ApproveRequestBody {
   userId: number;
@@ -23,13 +22,19 @@ export default async function handler(
   const { userId, approve } = req.body as ApproveRequestBody;
 
   try {
-    // ✅ MySQL query with proper typing
-    const [result] = await pool.query<ResultSetHeader>(
-      "UPDATE users SET is_approved = ? WHERE id = ?",
-      [approve, userId]
-    );
+    // ✅ Supabase query
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update({ is_approved: approve })
+      .eq('id', userId)
+      .select();
 
-    if (result.affectedRows === 0) {
+    if (error) {
+      console.error("Supabase update error:", error);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!data || data.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 

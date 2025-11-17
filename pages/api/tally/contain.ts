@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface VoteRow extends RowDataPacket {
+interface VoteRow {
   id: number;
   cast_at: Date | string;
 }
@@ -37,17 +36,23 @@ export default async function handler(
       return res.status(400).json({ error: "No valid vote IDs provided" });
     }
 
-    const [rows] = await pool.query<VoteRow[]>(
-      `SELECT id, cast_at FROM votes WHERE id IN (?)`,
-      [ids]
-    );
+    // Convert ids to a format suitable for Supabase
+    const { data: rows, error } = await supabaseAdmin
+      .from('votes')
+      .select('id, cast_at')
+      .in('id', ids);
 
-    const includedCount = rows.length;
+    if (error) {
+      console.error("Supabase query error:", error);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    const includedCount = rows ? rows.length : 0;
     const expectedCount = ids.length;
     const allIncluded = includedCount === expectedCount;
 
     let includedAtServerMs: number | null = null;
-    if (rows.length > 0) {
+    if (rows && rows.length > 0) {
       const maxCastAt = rows
         .map((r) => new Date(r.cast_at as any).getTime())
         .reduce((a, b) => Math.max(a, b), 0);
@@ -59,7 +64,7 @@ export default async function handler(
       included_count: includedCount,
       expected_count: expectedCount,
       included_at_server_ms: includedAtServerMs,
-      found_ids: rows.map((r) => r.id),
+      found_ids: rows ? rows.map((r) => r.id) : [],
     });
   } catch (err) {
     console.error("tally/contains error", err);

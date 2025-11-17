@@ -1,4 +1,46 @@
+# BotoSafe - Secure Student Voting Platform
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## System Overview
+
+BotoSafe is a secure student voting platform that implements a multi-factor authentication system:
+1. Username/Password authentication (using Student ID as username)
+2. OTP verification sent to registered email
+3. Face recognition verification
+
+## Authentication Flow
+
+### For Students:
+1. **Account Creation**: Students cannot register themselves. Accounts are created by administrators through CSV import.
+2. **Login**: Students log in using their Student ID and system-generated password
+3. **OTP Verification**: After successful login, an OTP is sent to their registered email
+4. **Face Verification**: After OTP verification, students must complete face recognition
+
+### For Administrators:
+1. **Login**: Admins log in using email and password configured in environment variables
+2. **Direct Access**: Admins bypass OTP and face verification steps
+
+## Performance Optimization
+
+### Face Recognition Model Loading
+To address memory consumption issues and slow page loads (4-5 seconds per page), we implemented a global model caching mechanism:
+
+1. **Problem**: Face recognition models were loading on every page visit, causing high memory usage and slow performance
+2. **Solution**: Created a `FaceModelManager` singleton service that:
+   - Loads models only once when needed (first login or vote submission)
+   - Caches models for reuse across different pages
+   - Prevents redundant model loading on regular page visits
+3. **Impact**: 
+   - Models now load only when actually needed for security-critical operations
+   - Subsequent page visits are much faster (no 4-5 second delays)
+   - Memory consumption is significantly reduced
+
+### Affected Pages:
+- `/signin/face-register` - First-time face registration
+- `/signin/face-scan` - Face verification during login
+- `/signin/face-scan-vote` - Face verification during voting
+- `/face-scan` - Alternative face verification route
 
 ## Getting Started
 
@@ -16,9 +58,22 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Student Account Management
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### CSV Import Process:
+1. Administrators upload a CSV file containing student information
+2. The system automatically generates passwords for each student
+3. During development, credentials are logged to the terminal
+4. In production, credentials would be sent via email
+
+### Required CSV Columns:
+- `fullname` - Student's full name
+- `email` - Student's email address
+- `school_id` - Unique student identifier
+- `age` (optional)
+- `gender` (optional)
+- `course` (optional)
+- `year_level` (optional)
 
 ## Learn More
 

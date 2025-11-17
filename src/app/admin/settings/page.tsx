@@ -109,8 +109,8 @@ export default function AdminSettingsPage() {
         if (mounted) {
           setSettings((s) => ({ ...s, ...normalized }));
         }
-      } catch (err: any) {
-        setMessage(err?.message || "Failed to load settings");
+      } catch (err: unknown) {
+        setMessage(err instanceof Error ? err.message : "Failed to load settings");
         setIsSuccess(false);
       } finally {
         if (mounted) setLoading(false);
@@ -181,8 +181,8 @@ export default function AdminSettingsPage() {
       if (!res.ok) throw new Error(data?.message || "Failed to save");
       // show success
       showSuccess("Settings saved");
-    } catch (err: any) {
-      setMessage(err?.message || "Save failed");
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Save failed");
       setIsSuccess(false);
     } finally {
       setSaving(false);
@@ -205,8 +205,8 @@ export default function AdminSettingsPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || "Failed to save");
       showSuccess(`Default school year set to ${computed}`);
-    } catch (err: any) {
-      setMessage(err?.message || "Save failed");
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Save failed");
       setIsSuccess(false);
     } finally {
       setSaving(false);

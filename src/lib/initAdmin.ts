@@ -1,15 +1,15 @@
-import { pool } from "@/configs/database";
 import bcrypt from "bcryptjs";
-import { RowDataPacket } from "mysql2";
+import { users } from "@/lib/supabaseClient";
 
-interface UserRow extends RowDataPacket {
-  id: number;
-  email: string;
-  fullname: string;
-  password: string;
-  role: "admin" | "voter";
-  is_verified: boolean;
-}
+// Remove unused UserRow interface
+// interface UserRow {
+//   id: number;
+//   email: string;
+//   fullname: string;
+//   password: string;
+//   role: "admin" | "voter";
+//   is_verified: boolean;
+// }
 
 export async function ensureAdminExists() {
   try {
@@ -17,29 +17,31 @@ export async function ensureAdminExists() {
     const plainPassword = process.env.ADMIN_PASSWORD!;
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-    const [rows] = await pool.query<UserRow[]>(
-      "SELECT * FROM users WHERE email = ?",
-      [email]
-    );
+    // Check if admin already exists
+    const { data: existingUser, error: checkError } = await users.getByEmailOrSchoolId(email);
+    
+    if (checkError && checkError.message !== 'JSON object requested, multiple (or no) rows returned') {
+      console.error("❌ Error checking admin existence:", checkError);
+      return;
+    }
 
-    if (rows.length === 0) {
-      await pool.query(
-        `INSERT INTO users 
-          (fullname, age, gender, course, year_level, school_id, password, email, is_verified, role) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          "Default Admin",
-          30,
-          "male",
-          "Administration",
-          "N/A",
-          "0000",
-          hashedPassword,
-          email,
-          true,
-          "admin",
-        ]
-      );
+    if (!existingUser) {
+      // Create admin user
+      const { data: newUser, error: createError } = await users.create({
+        fullname: "Default Admin",
+        password: hashedPassword,
+        email: email,
+        role: "admin",
+        school_id: "0000",
+        approval_status: "approved",
+        user_status: "active",
+        created_at: new Date().toISOString()
+      });
+
+      if (createError) {
+        console.error("❌ Error creating admin:", createError);
+        return;
+      }
 
       console.log("✅ Admin created successfully");
     } else {
@@ -49,16 +51,17 @@ export async function ensureAdminExists() {
     console.error("❌ Error ensuring admin exists:", error);
   }
 }
-<<<<<<< HEAD
-=======
 
 // 🔹 New helper: check if email is admin
 export async function isAdminEmail(email: string): Promise<boolean> {
   if (!email) return false;
-  const [rows] = await pool.query<UserRow[]>(
-    "SELECT role FROM users WHERE email = ? LIMIT 1",
-    [email]
-  );
-  return rows.length > 0 && rows[0].role === "admin";
+  
+  const { data: user, error } = await users.getByEmailOrSchoolId(email);
+  
+  if (error) {
+    console.error("Error checking admin email:", error);
+    return false;
+  }
+  
+  return !!user && user.role === "admin";
 }
->>>>>>> d425447 (Initial commit)

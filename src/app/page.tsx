@@ -1,174 +1,199 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import MainLayout from "@/components/layout/MainLayout";
 
-type Election = {
+interface ElectionData {
   id: number;
   title: string;
   start_time: string;
   end_time: string;
-  status: "upcoming" | "filing" | "ongoing" | "closed";
-};
+  status: string;
+}
 
 const Home: React.FC = () => {
-  const [election, setElection] = useState<Election | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [hasVoted, setHasVoted] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [electionData, setElectionData] = useState<ElectionData | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<string>("");
 
-  // Fetch latest election
-  useEffect(() => {
-    const fetchElection = async () => {
-      try {
-        const res = await fetch("/api/elections/latest");
-        if (res.ok) {
-          const data = await res.json();
-          setElection(data);
-        }
-      } catch (err) {
-        console.error("Error fetching election:", err);
-      }
-    };
-    fetchElection();
-  }, []);
+  // Function to calculate time remaining
+  const calculateTimeRemaining = (startTime: string) => {
+    const start = new Date(startTime).getTime();
+    const now = new Date().getTime();
+    const difference = start - now;
 
-  // Countdown logic
-  useEffect(() => {
-    if (!election) return;
+    if (difference <= 0) {
+      return "Election has started!";
+    }
 
-    const start = new Date(election.start_time).getTime();
-    const end = new Date(election.end_time).getTime();
+    const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
 
-    const interval = setInterval(() => {
-      const now = Date.now();
-      if (now < start) {
-        setTimeLeft(Math.floor((start - now) / 1000));
-      } else if (now >= start && now <= end) {
-        setTimeLeft(Math.floor((end - now) / 1000));
-      } else {
-        setTimeLeft(0);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [election]);
-
-  // Check if user has voted
-  useEffect(() => {
-    if (!election || election.status !== "ongoing") return;
-
-    const checkVoteStatus = async () => {
-      try {
-        const res = await fetch(`/api/has-voted?electionId=${election.id}`, {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setHasVoted(data.hasVoted);
-        }
-      } catch (err) {
-        console.error("Error checking vote status:", err);
-      }
-    };
-
-    checkVoteStatus();
-  }, [election]);
-
-  const formatTime = (seconds: number | null) => {
-    if (seconds === null) return "--:--:--";
-    if (seconds <= 0) return "00:00:00";
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hrs.toString().padStart(2, "0")}h : ${mins
-      .toString()
-      .padStart(2, "0")}m : ${secs.toString().padStart(2, "0")}s`;
+    return `${days} days, ${hours} hours, ${minutes} minutes`;
   };
 
-  const now = Date.now();
-  const start = election ? new Date(election.start_time).getTime() : 0;
-  const end = election ? new Date(election.end_time).getTime() : 0;
+  useEffect(() => {
+    // Check if user is authenticated
+    const checkAuth = async () => {
+      try {
+        // Check for temporary login first
+        const tempLogin = localStorage.getItem("tempLogin");
+        if (tempLogin === "true") {
+          const userId = localStorage.getItem("userId");
+          if (userId) {
+            setIsAuthenticated(true);
+            setIsLoading(false);
+            return;
+          }
+        }
 
-  let phase: "before" | "ongoing" | "ended" = "before";
-  if (now >= start && now <= end) {
-    phase = "ongoing";
-  } else if (now > end) {
-    phase = "ended";
+        // Try to authenticate - don't check cookies on client side
+        // because authToken is httpOnly and can't be read by JavaScript
+        const res = await fetch("/api/users/me", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (res.ok) {
+          setIsAuthenticated(true);
+        } else {
+          // Clear user state on 401/404
+          if (res.status === 401 || res.status === 404) {
+            setIsAuthenticated(false);
+          } else {
+            console.error("Error fetching user:", res.status, res.statusText);
+            setIsAuthenticated(false);
+          }
+        }
+      } catch (err) {
+        setIsAuthenticated(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // Fetch election data for authenticated users
+  useEffect(() => {
+    if (isAuthenticated) {
+      const fetchElectionData = async () => {
+        try {
+          const res = await fetch("/api/elections/latest");
+          if (res.ok) {
+            const data = await res.json();
+            setElectionData(data);
+            setTimeRemaining(calculateTimeRemaining(data.start_time));
+          }
+        } catch (error) {
+          console.error("Error fetching election data:", error);
+        }
+      };
+
+      fetchElectionData();
+
+      // Update time remaining every minute
+      const interval = setInterval(() => {
+        if (electionData) {
+          setTimeRemaining(calculateTimeRemaining(electionData.start_time));
+        }
+      }, 60000);
+
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, electionData]);
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-purple-100 to-red-100">
+          <p className="text-lg text-gray-700">Loading...</p>
+        </div>
+      </MainLayout>
+    );
   }
 
+  if (isAuthenticated) {
+    // Show content for authenticated users
+    return (
+      <MainLayout>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 via-pink-100 to-red-100 px-4 py-20 text-center">
+          <h1 className="text-6xl sm:text-7xl font-extrabold mb-6">
+            <span className="text-[#791010]">Boto</span>
+            <span className="text-black">Safe</span>
+          </h1>
+
+          <p className="text-lg sm:text-xl max-w-2xl mb-10 text-gray-700">
+            Welcome back! You&apos;re logged in and ready to participate in the election.
+          </p>
+
+          <div className="bg-white/80 backdrop-blur-md py-6 px-8 rounded-2xl shadow-xl mb-6 border border-white/40">
+            <p className="text-sm text-gray-800 uppercase mb-2">
+              Election Status
+            </p>
+            <h2 className="text-2xl font-bold text-[#791010] mb-4">
+              Election starts in: {timeRemaining || "Loading..."}
+            </h2>
+            <Link href="/pages/dashboard">
+              <button className="bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white px-6 py-2 rounded-full font-semibold hover:opacity-90 shadow-lg transition duration-300">
+                Go to Dashboard
+              </button>
+            </Link>
+          </div>
+
+          <div className="mt-8 text-gray-600 max-w-2xl">
+            <p className="mb-4">
+              Check the candidates and prepare for voting when the election begins.
+            </p>
+            <p>
+              Visit your dashboard to see your voting status and election information.
+            </p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Show login content for unauthenticated users
   return (
     <MainLayout>
-      <div
-        className="min-h-screen flex flex-col items-center justify-center
-        bg-gradient-to-br from-white via-purple-100 to-red-100
-        dark:from-pink-50 dark:via-purple-100 dark:to-blue-50
-        px-4 py-20 text-center transition-colors duration-500"
-      >
-        <h1 className="text-6xl sm:text-7xl font-extrabold mb-6 transition-colors duration-300">
-          <span className="text-[#791010] dark:text-pink-500">Boto</span>
-          <span className="text-black dark:text-blue-800">Safe</span>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 via-pink-100 to-red-100 px-4 py-20 text-center">
+        <h1 className="text-6xl sm:text-7xl font-extrabold mb-6">
+          <span className="text-[#791010]">Boto</span>
+          <span className="text-black">Safe</span>
         </h1>
 
-        <p className="text-lg sm:text-xl max-w-2xl mb-10 text-gray-700 dark:text-gray-800 transition-colors duration-300">
+        <p className="text-lg sm:text-xl max-w-2xl mb-10 text-gray-700">
           Your all-in-one student voting platform—secure, smart, and
           stress-free.
         </p>
 
-        {election ? (
-          <div
-            className="bg-gradient-to-r from-purple-200 to-blue-200
-            dark:from-pink-100 dark:via-purple-200 dark:to-blue-100
-            py-6 px-8 rounded-2xl shadow-xl mb-6
-            transition-colors duration-500"
-          >
-            {phase === "before" && (
-              <>
-                <p className="text-sm text-gray-800 dark:text-gray-700 uppercase mb-2">
-                  Voting has not started yet
-                </p>
-                <h2 className="text-2xl font-bold text-[#791010] dark:text-pink-500 mb-4">
-                  Starts in: {formatTime(timeLeft)}
-                </h2>
-              </>
-            )}
-
-            {phase === "ongoing" && (
-              <>
-                <p className="text-sm text-gray-800 dark:text-gray-700 uppercase mb-2">
-                  Time remaining before vote ends
-                </p>
-                <h2 className="text-2xl font-bold text-[#791010] dark:text-pink-500 mb-4">
-                  {formatTime(timeLeft)}
-                </h2>
-                {hasVoted ? (
-                  <button
-                    disabled
-                    className="bg-gray-400 dark:bg-gray-300 text-white px-6 py-2 rounded-full font-semibold cursor-not-allowed shadow-md transition"
-                  >
-                    ✅ You already voted
-                  </button>
-                ) : (
-                  <Link href="/pages/vote">
-                    <button className="bg-[#791010] dark:bg-pink-500 text-white px-6 py-2 rounded-full font-semibold hover:bg-[#5a0c0c] dark:hover:bg-pink-600 shadow-lg transition duration-300">
-                      🗳️ Cast Your Vote
-                    </button>
-                  </Link>
-                )}
-              </>
-            )}
-
-            {phase === "ended" && (
-              <h2 className="text-2xl font-bold text-gray-600 dark:text-gray-700">
-                🛑 Voting has ended
-              </h2>
-            )}
-          </div>
-        ) : (
-          <p className="text-gray-600 dark:text-gray-700">
-            No active election found
+        <div className="bg-white/80 backdrop-blur-md py-6 px-8 rounded-2xl shadow-xl mb-6 border border-white/40">
+          <p className="text-sm text-gray-800 uppercase mb-2">
+            Secure Student Voting Platform
           </p>
-        )}
+          <h2 className="text-2xl font-bold text-[#791010] mb-4">
+            Log in to access your account
+          </h2>
+          <Link href="/signin/login">
+            <button className="bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white px-6 py-2 rounded-full font-semibold hover:opacity-90 shadow-lg transition duration-300">
+              🔐 Log In
+            </button>
+          </Link>
+        </div>
+
+        <div className="mt-8 text-gray-600 max-w-2xl">
+          <p className="mb-4">
+            Students can log in using their Student ID and the password provided by the administrator.
+          </p>
+          <p>
+            Contact your administrator if you need assistance with your credentials.
+          </p>
+        </div>
       </div>
     </MainLayout>
   );

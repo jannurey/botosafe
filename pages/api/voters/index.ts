@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface Voter extends RowDataPacket {
+interface Voter {
   id: number;
   fullname: string;
   email: string;
@@ -21,11 +20,17 @@ export default async function handler(
   }
 
   try {
-    const [rows] = await pool.query<Voter[]>(
-      "SELECT * FROM users ORDER BY id ASC"
-    );
+    const { data: rows, error } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .order('id', { ascending: true });
 
-    return res.status(200).json(rows);
+    if (error) {
+      console.error("Supabase query error:", error);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    return res.status(200).json(rows || []);
   } catch (err: unknown) {
     console.error("Error fetching voters:", err);
     const message =

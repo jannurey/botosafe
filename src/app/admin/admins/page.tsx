@@ -62,8 +62,8 @@ export default function AdminsListPage() {
       setPassword("");
       setShowCreate(false);
       await loadAdmins();
-    } catch (err: any) {
-      setMessage(err?.message || "Failed to create");
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Failed to create");
     } finally {
       setOperatingId(null);
     }
@@ -84,8 +84,8 @@ export default function AdminsListPage() {
       if (!res.ok) throw new Error(data?.message || "Failed to delete");
       setMessage("Admin deleted");
       await loadAdmins();
-    } catch (err: any) {
-      setMessage(err?.message || "Failed to delete");
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Failed to delete");
     } finally {
       setOperatingId(null);
     }
@@ -111,8 +111,8 @@ export default function AdminsListPage() {
       if (!res.ok) throw new Error(data?.message || "Failed to approve");
       setMessage("Admin approved to vote");
       await loadAdmins();
-    } catch (err: any) {
-      setMessage(err?.message || "Failed to approve");
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Failed to approve");
     } finally {
       setOperatingId(null);
     }

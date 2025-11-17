@@ -4,12 +4,13 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import Header from "@/components/partials/Header";
+import Footer from "@/components/partials/Footer";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 const LoginPage = () => {
   const router = useRouter();
 
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState(""); // Changed from email to username
   const [password, setPassword] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,44 +25,42 @@ const LoginPage = () => {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }), // Changed from email to username
+        credentials: "include", // Include cookies in the request and response
       });
 
       const data = await res.json();
+      // Login API response received
       if (!res.ok) {
-        setStatusMessage(data.message || "Login failed.");
+        setStatusMessage(data.message || "Login failed");
       } else {
-<<<<<<< HEAD
-        // ✅ Save user info
-        localStorage.setItem("email", email);
-        localStorage.setItem("userId", data.userId);
-        localStorage.setItem("role", data.role);
-
-        // ✅ Redirect based on role
+        // Don't save user ID to localStorage anymore - rely on cookies
+        // localStorage.setItem("userId", data.userId.toString());
+        // localStorage.setItem("userRole", data.role);
+        
+        // Clear any existing temp login flags
+        localStorage.removeItem("tempLogin");
+        localStorage.removeItem("tempUserId");
+        localStorage.removeItem("userId");
+        localStorage.removeItem("userRole");
+        
         if (data.role === "admin") {
-          router.push("/admin/dashboard");
+          // Admins go directly to admin dashboard
+          window.location.href = "/admin/dashboard";
+        } else if (data.otpRequired) {
+          // For voters, go to OTP verification
+          localStorage.setItem("username", username); // Save username for OTP page
+          // Don't check face registration here - that happens after OTP verification
+          window.location.href = "/signin/verify-otp";
         } else {
-          router.push("/signin/verify-otp");
-=======
-        // ✅ Save user info (email and userId will be used by OTP step)
-        localStorage.setItem("email", email);
-        if (data.userId) localStorage.setItem("userId", String(data.userId));
-        if (data.role) localStorage.setItem("role", data.role);
-
-        // If server requires OTP, go to verify-otp regardless of role
-        if (data.otpRequired) {
-          router.push("/signin/verify-otp");
-          return;
-        }
-
-        // Otherwise, user is fully authenticated server-side; decide based on role
-        if (data.role === "admin") {
-          router.push("/admin/dashboard");
-        } else {
-          router.push("/"); // or the app's logged-in landing
->>>>>>> d425447 (Initial commit)
+          // This path should not be reached with our updated logic, but keeping it for safety
+          localStorage.setItem("username", username); // Save username for OTP page
+          window.location.href = "/signin/verify-otp";
         }
       }
+    } catch (error) {
+      setStatusMessage("An unexpected error occurred. Please try again.");
+      console.error("Login error:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -70,11 +69,7 @@ const LoginPage = () => {
   return (
     <>
       <Header />
-<<<<<<< HEAD
-      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-white via-purple-100 to-red-100 px-4 py-20">
-=======
       <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-white via-[#FEEBF6] to-[#FFD4D4] overflow-x-hidden transition-all px-4 py-20">
->>>>>>> d425447 (Initial commit)
         {/* Bubbles */}
         <div className="absolute top-0 left-0 h-60 w-60 rounded-full bg-red-200/30 blur-3xl animate-pulse" />
         <div className="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-purple-200/30 blur-3xl animate-pulse" />
@@ -88,21 +83,22 @@ const LoginPage = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label
-                htmlFor="email"
+                htmlFor="username"
                 className="block text-sm font-medium text-[#791010]"
               >
-                Email
+                Student ID
               </label>
               <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className={clsx(
                   "mt-1 w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-[#791010]",
                   "focus:border-[#791010] focus:outline-none focus:ring-1 focus:ring-[#791010]"
                 )}
                 required
+                placeholder="Enter your Student ID"
               />
             </div>
 
@@ -123,6 +119,7 @@ const LoginPage = () => {
                   "focus:border-[#791010] focus:outline-none focus:ring-1 focus:ring-[#791010]"
                 )}
                 required
+                placeholder="Enter your password"
               />
               <button
                 type="button"
@@ -147,8 +144,6 @@ const LoginPage = () => {
               {isSubmitting ? "Logging in..." : "Log In"}
             </button>
           </form>
-<<<<<<< HEAD
-=======
           <p className="text-center text-sm text-[#791010]">
             <a
               href="/signin/login/forgot-password"
@@ -157,16 +152,13 @@ const LoginPage = () => {
               Forgot Password?
             </a>
           </p>
->>>>>>> d425447 (Initial commit)
 
-          <p className="text-center text-sm text-[#791010]">
-            Don&apos;t have an account?{" "}
-            <a href="/signin" className="underline hover:text-[#9B1B1B]">
-              Sign Up
-            </a>
-          </p>
+          <div className="text-center text-sm text-[#791010]">
+            <p>Contact your administrator if you need assistance with your credentials.</p>
+          </div>
         </div>
       </main>
+      <Footer />
     </>
   );
 };

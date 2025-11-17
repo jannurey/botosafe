@@ -1,0 +1,1091 @@
+﻿
+> botosafe@0.1.0 build
+> next build
+
+   Γû▓ Next.js 15.5.6
+   - Environments: .env.local
+   - Experiments (use with caution):
+     Γ£ô optimizeCss
+     ┬╖ largePageDataBytes: 256000
+
+   Creating an optimized production build ...
+node.exe :  ΓÜá Compiled with 
+warnings in 11.3s
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpec 
+   ified: ( ΓÜá Compiled with warnin  
+  gs in 11.3s:String) [], RemoteExc   
+ eption
+    + FullyQualifiedErrorId : NativeC 
+   ommandError
+ 
+
+./node_modules/@vladmandic/face-api/di
+st/face-api.esm.js
+Critical dependency: require function 
+is used in a way in which 
+dependencies cannot be statically 
+extracted
+
+Import trace for requested module:
+./node_modules/@vladmandic/face-api/di
+st/face-api.esm.js
+./src/lib/face-models/FaceModelManager
+.ts
+./src/app/face-scan/page.tsx
+
+./node_modules/@vladmandic/face-api/di
+st/face-api.esm.js
+Critical dependency: require function 
+is used in a way in which 
+dependencies cannot be statically 
+extracted
+
+Import trace for requested module:
+./node_modules/@vladmandic/face-api/di
+st/face-api.esm.js
+./src/lib/face-models/FaceModelManager
+.ts
+./src/app/face-scan/page.tsx
+
+   Linting and checking validity of types ...
+
+Failed to compile.
+
+./pages/api/admin/import-students.ts
+5:1  Error: Include a description 
+after the "@ts-expect-error" 
+directive to explain why the 
+@ts-expect-error is necessary. The 
+description must be 3 characters or 
+longer.  
+@typescript-eslint/ban-ts-comment
+25:9  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+37:21  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+37:32  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+37:41  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+50:44  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+52:20  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+95:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+112:12  Warning: 'authError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+124:3  Error: Include a description 
+after the "@ts-expect-error" 
+directive to explain why the 
+@ts-expect-error is necessary. The 
+description must be 3 characters or 
+longer.  
+@typescript-eslint/ban-ts-comment
+125:27  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+125:39  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/admins/index.ts
+25:14  Warning: 'error' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/admins/me.ts
+23:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/admins/settings.ts
+17:12  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+53:16  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/admins/[id].ts
+27:18  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+30:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+123:25  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/candidates/approved.ts
+12:11  Warning: 'Candidate' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+102:60  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+106:61  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/candidates/index.ts
+15:11  Warning: 'Candidate' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+50:18  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+79:12  Warning: 'error' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+85:54  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+325:49  Warning: 'files' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+365:18  Warning: 'jwtError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/convert-temp-token.ts
+6:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+15:18  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/dashboard/results.ts
+65:29  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+67:49  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/dashboard/summary.ts
+13:11  Warning: 'CourseVotersRow' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+19:11  Warning: 'CourseTurnoutRow' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/forgot-password.ts
+19:33  Warning: 'userError' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/login.ts
+6:10  Warning: 'supabaseAdmin' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+7:10  Warning: 'signUpWithEmail' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+7:27  Warning: 'signInWithEmail' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+171:36  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/register-face.ts
+13:10  Warning: 'cosineSimilarity' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+44:20  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+67:19  Warning: 'faceData' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/results.ts
+5:11  Warning: 'ElectionRow' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+13:11  Warning: 'CandidateRow' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+20:11  Warning: 'VoteRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/selection/complete-admin.t
+s
+4:10  Warning: 'serialize' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+23:18  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+26:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+69:36  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/selection/preauth-voter.ts
+23:18  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+26:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/send-otp.ts
+7:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+73:26  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/setup-admin.ts
+5:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/signin.ts
+5:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/tally/contain.ts
+4:11  Warning: 'VoteRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+57:43  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/test-auth.ts
+27:19  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/test-supabase.ts
+26:19  Warning: 'userData' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+42:19  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/users/me.ts
+4:8  Warning: 'bcrypt' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+6:10  Warning: 'User' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./pages/api/verify-face.ts
+4:13  Warning: 'faceapi' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+6:11  Warning: 'FaceRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+12:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+141:38  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/verify-otp.ts
+23:11  Warning: 'OtpRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+30:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+133:36  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./pages/api/vote/verify-face.ts
+4:13  Warning: 'faceapi' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+12:11  Warning: 'FaceRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+17:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+253:36  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+270:5  Warning: Unused eslint-disable 
+directive (no problems were reported 
+from 'no-console').
+
+./pages/api/vote.ts
+55:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+74:19  Warning: 'vote' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/admin/admins/page.tsx
+65:19  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+87:19  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+114:19  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./src/app/admin/candidates/page.tsx
+155:18  Warning: 'parseError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/admin/import-students/page.t
+sx
+278:76  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+281:73  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+287:71  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+290:74  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+293:74  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+296:78  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+
+./src/app/admin/profile/edit/page.tsx
+80:16  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+166:19  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+294:37  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./src/app/admin/profile/page.tsx
+69:16  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/admin/settings/page.tsx
+112:21  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+184:19  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+208:19  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+
+./src/app/face-scan/FaceScanPage.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/face-scan/page-original.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/face-scan/page.tsx
+5:13  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/page.tsx
+10:52  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+63:16  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+123:30  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+
+./src/app/pages/candidates/page.tsx
+8:8  Warning: 'Link' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+80:45  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+98:57  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+99:73  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+140:20  Warning: 'decodeError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+162:16  Warning: 'error' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/pages/dashboard/page.tsx
+107:20  Warning: 'decodeError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+134:16  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/pages/profile/page.tsx
+7:8  Warning: 'Footer' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+76:10  Warning: 'isEditProfileOpen' 
+is assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+76:29  Warning: 
+'setIsEditProfileOpen' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+77:10  Warning: 
+'profileSuccessMessage' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+77:33  Warning: 
+'setProfileSuccessMessage' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+80:10  Warning: 
+'isChangePasswordOpen' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+80:32  Warning: 
+'setIsChangePasswordOpen' is assigned 
+a value but never used.  
+@typescript-eslint/no-unused-vars
+82:10  Warning: 'cpCurrent' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+82:21  Warning: 'setCpCurrent' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+83:10  Warning: 'cpNew' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+83:17  Warning: 'setCpNew' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+84:10  Warning: 'cpConfirm' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+84:21  Warning: 'setCpConfirm' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+85:10  Warning: 'cpLoading' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+85:21  Warning: 'setCpLoading' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+86:10  Warning: 'cpError' is assigned 
+a value but never used.  
+@typescript-eslint/no-unused-vars
+86:19  Warning: 'setCpError' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+89:10  Warning: 'isFilingModalOpen' 
+is assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+89:29  Warning: 
+'setIsFilingModalOpen' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+90:10  Warning: 'latestElection' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+90:26  Warning: 'setLatestElection' 
+is assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+91:9  Warning: 'modalRef' is assigned 
+a value but never used.  
+@typescript-eslint/no-unused-vars
+92:10  Warning: 'formError' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+92:21  Warning: 'setFormError' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+93:10  Warning: 'selectedPositionId' 
+is assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+93:30  Warning: 
+'setSelectedPositionId' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+94:10  Warning: 'positions' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+94:21  Warning: 'setPositions' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+95:10  Warning: 'achievements' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+95:24  Warning: 'setAchievements' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+96:10  Warning: 'partylist' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+96:21  Warning: 'setPartylist' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+97:10  Warning: 'photoUrl' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+97:20  Warning: 'setPhotoUrl' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+98:10  Warning: 'photoFile' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+98:21  Warning: 'setPhotoFile' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+99:10  Warning: 'cocUrl' is assigned 
+a value but never used.  
+@typescript-eslint/no-unused-vars
+99:18  Warning: 'setCocUrl' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+100:10  Warning: 'cocFile' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+100:19  Warning: 'setCocFile' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+101:10  Warning: 'showHelpModal' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+101:25  Warning: 'setShowHelpModal' 
+is assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+104:10  Warning: 'editingCandidateId' 
+is assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+104:30  Warning: 
+'setEditingCandidateId' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+107:10  Warning: 
+'originalCandidateSnapshot' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+107:37  Warning: 
+'setOriginalCandidateSnapshot' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+166:20  Warning: 'decodeError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+475:66  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+700:30  Error: `'` can be escaped 
+with `&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+797:10  Warning: 'ProfileField' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/pages/vote/page.tsx
+22:13  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+77:18  Warning: 'decodeError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+152:20  Warning: 'decodeError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+304:9  Warning: 'handleOpenModal' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+358:16  Warning: 'decodeError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+421:9  Warning: 'hasElectionStarted' 
+is assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/signin/face-register/FaceReg
+istrationPage.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+37:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+64:9  Warning: 'MAR_THRESHOLD' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+192:9  Warning: 'mouthAspectRatio' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+342:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage' and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+402:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+410:21  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+529:6  Warning: React Hook useEffect 
+has a missing dependency: 
+'addErrorMessage'. Either include it 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-register/page-or
+iginal.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+37:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+64:9  Warning: 'MAR_THRESHOLD' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+188:9  Warning: 'mouthAspectRatio' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+338:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage' and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+398:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+406:21  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+525:6  Warning: React Hook useEffect 
+has a missing dependency: 
+'addErrorMessage'. Either include it 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-register/page.ts
+x
+38:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+65:9  Warning: 'MAR_THRESHOLD' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+189:9  Warning: 'mouthAspectRatio' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+339:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage' and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+399:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+407:21  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+532:6  Warning: React Hook useEffect 
+has a missing dependency: 
+'addErrorMessage'. Either include it 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-scan/FaceScanSig
+ninPage.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+37:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+53:10  Warning: 'detectionRunning' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+308:67  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+341:23  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+361:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage', 'resetCheck', and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+415:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+575:30  Warning: The ref value 
+'videoRef.current' will likely have 
+changed by the time this effect 
+cleanup function runs. If this ref 
+points to a node rendered by React, 
+copy 'videoRef.current' to a variable 
+inside the effect, and use that 
+variable in the cleanup function.  
+react-hooks/exhaustive-deps
+583:6  Warning: React Hook useEffect 
+has missing dependencies: 
+'addErrorMessage' and 'resetCheck'. 
+Either include them or remove the 
+dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-scan/page-origin
+al.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+37:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+53:10  Warning: 'detectionRunning' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+304:67  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+337:23  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+357:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage', 'resetCheck', and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+411:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+571:30  Warning: The ref value 
+'videoRef.current' will likely have 
+changed by the time this effect 
+cleanup function runs. If this ref 
+points to a node rendered by React, 
+copy 'videoRef.current' to a variable 
+inside the effect, and use that 
+variable in the cleanup function.  
+react-hooks/exhaustive-deps
+579:6  Warning: React Hook useEffect 
+has missing dependencies: 
+'addErrorMessage' and 'resetCheck'. 
+Either include them or remove the 
+dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-scan/page.tsx
+5:13  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+38:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+54:10  Warning: 'detectionRunning' is 
+assigned a value but never used.  
+@typescript-eslint/no-unused-vars
+305:67  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+338:23  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+358:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage', 'resetCheck', and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+412:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+572:30  Warning: The ref value 
+'videoRef.current' will likely have 
+changed by the time this effect 
+cleanup function runs. If this ref 
+points to a node rendered by React, 
+copy 'videoRef.current' to a variable 
+inside the effect, and use that 
+variable in the cleanup function.  
+react-hooks/exhaustive-deps
+577:6  Warning: React Hook useEffect 
+has missing dependencies: 
+'addErrorMessage' and 'resetCheck'. 
+Either include them or remove the 
+dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-scan-vote/FaceSc
+anVotePage.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+315:21  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+346:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage', 'resetCheck', and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+421:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+537:6  Warning: React Hook useEffect 
+has missing dependencies: 
+'addErrorMessage' and 'resetCheck'. 
+Either include them or remove the 
+dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-scan-vote/page-o
+riginal.tsx
+5:18  Warning: 'tf' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+311:21  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+342:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage', 'resetCheck', and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+417:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+533:6  Warning: React Hook useEffect 
+has missing dependencies: 
+'addErrorMessage' and 'resetCheck'. 
+Either include them or remove the 
+dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/face-scan-vote/page.t
+sx
+312:21  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+343:5  Warning: React Hook 
+useCallback has missing dependencies: 
+'addErrorMessage', 'resetCheck', and 
+'setSuccessMsg'. Either include them 
+or remove the dependency array.  
+react-hooks/exhaustive-deps
+418:29  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+540:6  Warning: React Hook useEffect 
+has missing dependencies: 
+'addErrorMessage' and 'resetCheck'. 
+Either include them or remove the 
+dependency array.  
+react-hooks/exhaustive-deps
+
+./src/app/signin/login/forgot-password
+/page.tsx
+38:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+54:36  Error: `'` can be escaped with 
+`&apos;`, `&lsquo;`, `&#39;`, 
+`&rsquo;`.  
+react/no-unescaped-entities
+
+./src/app/signin/login/page.tsx
+11:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/signin/login/reset-password/
+[token]/page.tsx
+88:14  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./src/app/signin/verify-otp/page.tsx
+9:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+22:10  Warning: 'userId' is assigned 
+a value but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/components/partials/Header.tsx
+18:9  Warning: 'router' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+64:18  Warning: 'decodeError' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+100:16  Warning: 'err' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+
+./src/lib/faceEvents.ts
+12:55  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+101:47  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+105:40  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+141:15  Error: Unexpected any. 
+Specify a different type.  
+@typescript-eslint/no-explicit-any
+144:5  Warning: Unused eslint-disable 
+directive (no problems were reported 
+from 'no-console').
+
+./src/lib/initAdmin.ts
+4:11  Warning: 'UserRow' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+29:21  Warning: 'newUser' is assigned 
+a value but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/lib/preAuth.ts
+22:10  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./src/lib/redis.ts
+17:5  Warning: Unused eslint-disable 
+directive (no problems were reported 
+from 'no-console').
+
+./src/lib/requireAuthApi.ts
+12:45  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./src/lib/supabaseAuth.ts
+3:10  Warning: 'cookies' is defined 
+but never used.  
+@typescript-eslint/no-unused-vars
+4:10  Warning: 'NextRequest' is 
+defined but never used.  
+@typescript-eslint/no-unused-vars
+5:10  Warning: 'User' is defined but 
+never used.  
+@typescript-eslint/no-unused-vars
+31:82  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+65:68  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+78:77  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./src/lib/supabaseClient.ts
+61:75  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+61:85  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+76:81  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+76:89  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+91:78  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+91:89  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+./src/lib/useBfcacheReload.tsx
+9:7  Warning: Unused eslint-disable 
+directive (no problems were reported 
+from 'no-console').
+20:7  Warning: Unused eslint-disable 
+directive (no problems were reported 
+from 'no-console').
+
+./src/lib/video/draw.ts
+68:25  Warning: 'dx' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+68:29  Warning: 'dy' is assigned a 
+value but never used.  
+@typescript-eslint/no-unused-vars
+
+./src/lib/video/orientation.ts
+17:55  Error: Unexpected any. Specify 
+a different type.  
+@typescript-eslint/no-explicit-any
+
+info  - Need to disable some ESLint 
+rules? Learn more here: https://nextjs
+.org/docs/app/api-reference/config/esl
+int#disabling-rules

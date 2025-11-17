@@ -1,10 +1,11 @@
+// pages/api/users/me.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { users } from "@/lib/supabaseClient";
+import { User } from '@supabase/supabase-js';
 
-interface User extends RowDataPacket {
+interface UserRow {
   id: number;
   fullname: string;
   email: string;
@@ -19,7 +20,7 @@ interface User extends RowDataPacket {
 
 interface ApiResponse {
   message?: string;
-  user?: User;
+  user?: UserRow;
 }
 
 export default async function handler(
@@ -27,118 +28,45 @@ export default async function handler(
   res: NextApiResponse<ApiResponse>
 ) {
   try {
-    const token = req.cookies.authToken;
-    if (!token) return res.status(401).json({ message: "Not authenticated" });
+    // Check for temporary login state first
+    const tempLogin = req.headers['x-temp-login'];
+    if (tempLogin === 'true') {
+      // Handle temporary login for newly registered users
+      const userId = req.headers['x-user-id'];
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      id: number;
-      mfa?: boolean;
-    };
-
-    if (!decoded.mfa) {
-      return res.status(403).json({ message: "Full MFA required" });
-    }
-
-    if (req.method === "GET") {
-      const [rows] = await pool.query<User[]>(
-        `SELECT id, fullname, email, school_id, age, year_level, 
-                user_status, approval_status, gender, course
-         FROM users WHERE id = ?`,
-        [decoded.id]
-      );
-
-      if (rows.length === 0) {
+      const { data: user, error: userError } = await users.getById(Number(userId));
+      
+      if (userError || !user || !user.id) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      return res.status(200).json({ user: rows[0] });
+      return res.status(200).json({ user: user as UserRow });
     }
 
-    if (req.method === "PUT") {
-      const {
-        fullname,
-        email,
-        school_id,
-        age,
-        year_level,
-        user_status,
-        gender,
-        course,
-        password,
-      } = req.body;
-
-      let hashedPassword: string | null = null;
-      if (password?.trim()) {
-        hashedPassword = await bcrypt.hash(password, 10);
-      }
-
-      const updateFields = [
-        "fullname = ?",
-        "email = ?",
-        "school_id = ?",
-        "age = ?",
-        "year_level = ?",
-        "user_status = ?",
-        "gender = ?",
-        "course = ?",
-      ];
-      const values: (string | number | null)[] = [
-        fullname,
-        email,
-        school_id,
-        age,
-        year_level,
-        user_status,
-        gender,
-        course,
-      ];
-
-      if (hashedPassword) {
-        updateFields.push("password = ?");
-        values.push(hashedPassword);
-      }
-
-      updateFields.push("updated_at = NOW()");
-      values.push(decoded.id);
-
-      const updateQuery = `
-        UPDATE users
-        SET ${updateFields.join(", ")}
-        WHERE id = ?
-      `;
-
-      const [updateResult] = await pool.query<ResultSetHeader>(
-        updateQuery,
-        values
-      );
-
-      if (updateResult.affectedRows === 0) {
-        return res
-          .status(404)
-          .json({ message: "User not found or not updated" });
-      }
-
-      const [rows] = await pool.query<User[]>(
-        `SELECT id, fullname, email, school_id, age, year_level, 
-                user_status, approval_status, gender, course
-         FROM users WHERE id = ?`,
-        [decoded.id]
-      );
-
-      if (rows.length === 0) {
-        return res.status(404).json({ message: "User not found after update" });
-      }
-
-      return res.status(200).json({
-        message: "User updated successfully",
-        user: rows[0],
-      });
+    // Extract token from cookies
+    const token = req.cookies.authToken || req.cookies.token;
+    if (!token) {
+      return res.status(401).json({ message: "Not authenticated" });
     }
 
-    res.setHeader("Allow", ["GET", "PUT"]);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
-  } catch (err) {
-    console.error("User API error:", err);
-    return res.status(401).json({ message: "Invalid or expired token" });
+    // Verify JWT token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: number; email: string; role: string };
+    
+    // Get user from Supabase
+    const { data: user, error: userError } = await users.getById(decoded.id);
+    
+    if (userError || !user || !user.id) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({ user: user as UserRow });
+  } catch (err: unknown) {
+    console.error("Error fetching user:", err);
+    const message =
+      err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ message });
   }
 }

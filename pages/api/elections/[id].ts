@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface Election extends RowDataPacket {
+interface Election {
   id: number;
   title: string;
   status: string;
@@ -36,12 +35,17 @@ export default async function handler(
 
   try {
     if (req.method === "GET") {
-      const [rows] = await pool.query<Election[]>(
-        "SELECT * FROM elections WHERE id = ?",
-        [id]
-      );
+      const { data: rows, error } = await supabaseAdmin
+        .from('elections')
+        .select('*')
+        .eq('id', id);
 
-      if (rows.length === 0) {
+      if (error) {
+        console.error("Supabase query error:", error);
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      if (!rows || rows.length === 0) {
         return res.status(404).json({ error: "Election not found" });
       }
 
@@ -49,10 +53,15 @@ export default async function handler(
       const newStatus = computeStatus(election);
 
       if (newStatus !== election.status) {
-        await pool.query<ResultSetHeader>(
-          "UPDATE elections SET status = ? WHERE id = ?",
-          [newStatus, election.id]
-        );
+        const { error: updateError } = await supabaseAdmin
+          .from('elections')
+          .update({ status: newStatus })
+          .eq('id', election.id);
+
+        if (updateError) {
+          console.error("Supabase update error:", updateError);
+          return res.status(500).json({ error: "Database error" });
+        }
         election.status = newStatus;
       }
 
@@ -68,25 +77,66 @@ export default async function handler(
         filing_end_time,
       } = req.body as Partial<Election>;
 
-      await pool.query<ResultSetHeader>(
-        `UPDATE elections
-         SET title = ?, start_time = ?, end_time = ?, filing_start_time = ?, filing_end_time = ?
-         WHERE id = ?`,
-        [title, start_time, end_time, filing_start_time, filing_end_time, id]
-      );
+      // Ensure times are properly formatted as ISO strings
+      const formatTime = (time: string | null | undefined) => {
+        if (!time) return null;
+        try {
+          // If it's already an ISO string, use it as is
+          if (time.includes('T') && time.includes('Z')) {
+            return time;
+          }
+          // Otherwise, parse and convert to ISO
+          return new Date(time).toISOString();
+        } catch (error) {
+          console.error("Error formatting time:", error);
+          return null;
+        }
+      };
 
-      const [updatedRows] = await pool.query<Election[]>(
-        "SELECT * FROM elections WHERE id = ?",
-        [id]
-      );
+      const { error: updateError } = await supabaseAdmin
+        .from('elections')
+        .update({
+          title,
+          start_time: formatTime(start_time),
+          end_time: formatTime(end_time),
+          filing_start_time: formatTime(filing_start_time),
+          filing_end_time: formatTime(filing_end_time)
+        })
+        .eq('id', id);
+
+      if (updateError) {
+        console.error("Supabase update error:", updateError);
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      const { data: updatedRows, error: selectError } = await supabaseAdmin
+        .from('elections')
+        .select('*')
+        .eq('id', id);
+
+      if (selectError) {
+        console.error("Supabase select error:", selectError);
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      if (!updatedRows || updatedRows.length === 0) {
+        return res.status(404).json({ error: "Election not found" });
+      }
 
       return res.status(200).json(updatedRows[0]);
     }
 
     if (req.method === "DELETE") {
-      await pool.query<ResultSetHeader>("DELETE FROM elections WHERE id = ?", [
-        id,
-      ]);
+      const { error } = await supabaseAdmin
+        .from('elections')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error("Supabase delete error:", error);
+        return res.status(500).json({ error: "Database error" });
+      }
+
       return res.status(204).end();
     }
 

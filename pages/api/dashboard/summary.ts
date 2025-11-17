@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface Election extends RowDataPacket {
+interface Election {
   id: number;
   title: string;
   status: string;
@@ -11,13 +10,13 @@ interface Election extends RowDataPacket {
   timeRemaining?: string | null;
 }
 
-interface CourseVotersRow extends RowDataPacket {
+interface CourseVotersRow {
   course: string;
   year_level: number;
   voters: number;
 }
 
-interface CourseTurnoutRow extends RowDataPacket {
+interface CourseTurnoutRow {
   course: string;
   year_level: number;
   turnout: number;
@@ -55,17 +54,22 @@ export default async function handler(
 ): Promise<void> {
   try {
     // 🗳 Get latest election
-    const [electionRows] = await pool.query<Election[]>(
-      `SELECT id, title, status, start_time, end_time
-       FROM elections
-       WHERE status IN ('upcoming', 'filing', 'ongoing', 'closed')
-       ORDER BY start_time DESC
-       LIMIT 1`
-    );
+    const { data: electionRows, error: electionError } = await supabaseAdmin
+      .from('elections')
+      .select('id, title, status, start_time, end_time')
+      .in('status', ['upcoming', 'filing', 'ongoing', 'closed'])
+      .order('start_time', { ascending: false })
+      .limit(1);
 
-    const election = electionRows[0] || null;
+    if (electionError) {
+      console.error("Supabase election query error:", electionError);
+      return res.status(500).json({ error: "Database error" });
+    }
 
-    if (!election) {
+    const election = electionRows && electionRows.length > 0 ? electionRows[0] : null;
+
+    // If no election exists, return default values
+    if (!election || !election.id) {
       return res.status(200).json({
         voters: 0,
         candidates: 0,
@@ -76,76 +80,123 @@ export default async function handler(
     }
 
     // 👥 Total active and approved voters
-    const [votersRows] = await pool.query<
-      (RowDataPacket & { total: number })[]
-    >(
-      `SELECT COUNT(*) AS total 
-       FROM users 
-       WHERE role = 'voter' 
-         AND approval_status = 'approved' 
-         AND user_status = 'active'`
-    );
-    const voters = votersRows[0]?.total ?? 0;
+    const { data: votersRows, error: votersError } = await supabaseAdmin
+      .from('users')
+      .select('id') // Changed from 'count' to 'id' to get actual records
+      .eq('role', 'voter')
+      .eq('approval_status', 'approved')
+      .eq('user_status', 'active');
+
+    if (votersError) {
+      console.error("Supabase voters query error:", votersError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Count the actual number of voters
+    const voters = votersRows ? votersRows.length : 0;
 
     // 👤 Total candidates in current election
-    const [candidatesRows] = await pool.query<
-      (RowDataPacket & { total: number })[]
-    >(
-      `SELECT COUNT(*) AS total 
-       FROM candidates 
-       WHERE election_id = ?`,
-      [election.id]
-    );
-    const candidates = candidatesRows[0]?.total ?? 0;
+    const { data: candidatesRows, error: candidatesError } = await supabaseAdmin
+      .from('candidates')
+      .select('id') // Changed from 'count' to 'id' to get actual records
+      .eq('election_id', election.id);
+
+    if (candidatesError) {
+      console.error("Supabase candidates query error:", candidatesError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Count the actual number of candidates
+    const candidates = candidatesRows ? candidatesRows.length : 0;
 
     // ✅ Total unique users who voted in this election
-    const [votedRows] = await pool.query<(RowDataPacket & { total: number })[]>(
-      `SELECT COUNT(DISTINCT v.user_id) AS total
-       FROM votes v
-       INNER JOIN users u ON u.id = v.user_id
-       LEFT JOIN candidates c ON v.candidate_id = c.id
-       WHERE u.role = 'voter'
-         AND u.approval_status = 'approved'
-         AND u.user_status = 'active'
-         AND (c.election_id = ? OR v.election_id = ? OR c.election_id IS NULL)`,
-      [election.id, election.id]
-    );
-    const voted = votedRows[0]?.total ?? 0;
+    const { data: votedRows, error: votedError } = await supabaseAdmin
+      .from('votes')
+      .select('user_id')
+      .eq('election_id', election.id)
+      .not('user_id', 'is', null);
+
+    if (votedError) {
+      console.error("Supabase voted query error:", votedError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Get unique user IDs who voted
+    const uniqueVoters = new Set(votedRows?.map(row => row.user_id) || []);
+    const voted = uniqueVoters.size;
 
     // 🎓 Registered voters per course/year
-    const [votersByCourseRows] = await pool.query<CourseVotersRow[]>(
-      `SELECT course, year_level, COUNT(*) AS voters
-       FROM users
-       WHERE role = 'voter'
-         AND approval_status = 'approved'
-         AND user_status = 'active'
-         AND course IN (${ALLOWED_COURSES.map(() => "?").join(",")})
-       GROUP BY course, year_level
-       ORDER BY course, year_level`,
-      ALLOWED_COURSES
-    );
+    const { data: votersByCourseRows, error: votersByCourseError } = await supabaseAdmin
+      .from('users')
+      .select('course, year_level')
+      .eq('role', 'voter')
+      .eq('approval_status', 'approved')
+      .eq('user_status', 'active')
+      .in('course', ALLOWED_COURSES);
+
+    if (votersByCourseError) {
+      console.error("Supabase voters by course query error:", votersByCourseError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Group voters by course and year_level
+    const votersByCourseMap: Record<string, { course: string; year_level: number; voters: number }> = {};
+    votersByCourseRows?.forEach(row => {
+      const key = `${row.course}_${row.year_level}`;
+      if (!votersByCourseMap[key]) {
+        votersByCourseMap[key] = {
+          course: row.course,
+          year_level: row.year_level,
+          voters: 0
+        };
+      }
+      votersByCourseMap[key].voters++;
+    });
+
+    const votersByCourseFormatted = Object.values(votersByCourseMap);
 
     // 🎓 Actual turnout (voted users) per course/year
-    const [turnoutByCourseRows] = await pool.query<CourseTurnoutRow[]>(
-      `SELECT 
-         u.course, 
-         u.year_level, 
-         COUNT(DISTINCT u.id) AS turnout
-       FROM users u
-       LEFT JOIN votes v ON u.id = v.user_id
-       LEFT JOIN candidates c ON v.candidate_id = c.id
-       WHERE u.role = 'voter'
-         AND u.approval_status = 'approved'
-         AND u.user_status = 'active'
-         AND u.course IN (${ALLOWED_COURSES.map(() => "?").join(",")})
-         AND (c.election_id = ? OR v.election_id = ? OR c.election_id IS NULL)
-       GROUP BY u.course, u.year_level
-       ORDER BY u.course, u.year_level`,
-      [...ALLOWED_COURSES, election.id, election.id]
-    );
+    const { data: turnoutByCourseRows, error: turnoutByCourseError } = await supabaseAdmin
+      .from('users')
+      .select(`
+        course, 
+        year_level,
+        votes (
+          id
+        )
+      `)
+      .eq('role', 'voter')
+      .eq('approval_status', 'approved')
+      .eq('user_status', 'active')
+      .in('course', ALLOWED_COURSES)
+      .eq('votes.election_id', election.id);
+
+    if (turnoutByCourseError) {
+      console.error("Supabase turnout by course query error:", turnoutByCourseError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Group turnout by course and year_level
+    const turnoutByCourseMap: Record<string, { course: string; year_level: number; turnout: number }> = {};
+    turnoutByCourseRows?.forEach(row => {
+      const key = `${row.course}_${row.year_level}`;
+      if (!turnoutByCourseMap[key]) {
+        turnoutByCourseMap[key] = {
+          course: row.course,
+          year_level: row.year_level,
+          turnout: 0
+        };
+      }
+      // Count votes for this user
+      if (row.votes && Array.isArray(row.votes)) {
+        turnoutByCourseMap[key].turnout += row.votes.length;
+      }
+    });
+
+    const turnoutByCourseFormatted = Object.values(turnoutByCourseMap);
 
     // 🧩 Create a turnout map
-    const turnoutMap = turnoutByCourseRows.reduce<Record<string, number>>(
+    const turnoutMap = turnoutByCourseFormatted.reduce<Record<string, number>>(
       (acc, row) => {
         acc[`${row.course}_${row.year_level}`] = row.turnout;
         return acc;
@@ -154,7 +205,7 @@ export default async function handler(
     );
 
     // 🧩 Combine voter + turnout data
-    const courses: CourseTurnout[] = votersByCourseRows.map((row) => ({
+    const courses: CourseTurnout[] = votersByCourseFormatted.map((row) => ({
       course: row.course,
       year_level: row.year_level,
       label: `${row.course} - Year ${row.year_level}`,

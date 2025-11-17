@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface Election extends RowDataPacket {
+interface Election {
   id: number;
   title: string;
   status: "upcoming" | "filing" | "ongoing" | "closed";
@@ -35,19 +34,30 @@ export default async function handler(
 ) {
   try {
     if (req.method === "GET") {
-      const [rows] = await pool.query<Election[]>(
-        "SELECT * FROM elections ORDER BY created_at DESC"
-      );
+      const { data: rows, error } = await supabaseAdmin
+        .from('elections')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Supabase query error:", error);
+        return res.status(500).json({ error: "Database error" });
+      }
 
       const elections = await Promise.all(
         rows.map(async (e) => {
           const newStatus = computeStatus(e);
           if (newStatus !== e.status) {
-            await pool.query<ResultSetHeader>(
-              "UPDATE elections SET status = ? WHERE id = ?",
-              [newStatus, e.id]
-            );
-            e.status = newStatus;
+            const { error: updateError } = await supabaseAdmin
+              .from('elections')
+              .update({ status: newStatus })
+              .eq('id', e.id);
+
+            if (updateError) {
+              console.error("Supabase update error:", updateError);
+            } else {
+              e.status = newStatus;
+            }
           }
           return e;
         })
@@ -65,43 +75,55 @@ export default async function handler(
         filing_end_time,
       } = req.body;
 
+      // Ensure times are properly formatted as ISO strings
+      const formatTime = (time: string | null | undefined) => {
+        if (!time) return null;
+        try {
+          // If it's already an ISO string, use it as is
+          if (time.includes('T') && time.includes('Z')) {
+            return time;
+          }
+          // Otherwise, parse and convert to ISO
+          return new Date(time).toISOString();
+        } catch (error) {
+          console.error("Error formatting time:", error);
+          return null;
+        }
+      };
+
       // Insert new election
-      const [insertResult] = await pool.query<ResultSetHeader>(
-        `INSERT INTO elections (
-          title, start_time, end_time, filing_start_time, filing_end_time, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [
+      const { data: insertResult, error: insertError } = await supabaseAdmin
+        .from('elections')
+        .insert({
           title,
-          start_time,
-          end_time,
-          filing_start_time,
-          filing_end_time,
-          "upcoming",
-        ]
-      );
+          start_time: formatTime(start_time),
+          end_time: formatTime(end_time),
+          filing_start_time: formatTime(filing_start_time),
+          filing_end_time: formatTime(filing_end_time),
+          status: "upcoming",
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-      const insertId = insertResult.insertId;
-
-      // Fetch the inserted election
-      const [rows] = await pool.query<Election[]>(
-        "SELECT * FROM elections WHERE id = ?",
-        [insertId]
-      );
-
-      if (rows.length === 0) {
-        return res
-          .status(500)
-          .json({ error: "Failed to fetch created election" });
+      if (insertError) {
+        console.error("Supabase insert error:", insertError);
+        return res.status(500).json({ error: "Database error" });
       }
 
-      const election = rows[0];
+      const election = insertResult;
       const newStatus = computeStatus(election);
 
       if (newStatus !== election.status) {
-        await pool.query<ResultSetHeader>(
-          "UPDATE elections SET status = ? WHERE id = ?",
-          [newStatus, election.id]
-        );
+        const { error: updateError } = await supabaseAdmin
+          .from('elections')
+          .update({ status: newStatus })
+          .eq('id', election.id);
+
+        if (updateError) {
+          console.error("Supabase update error:", updateError);
+          return res.status(500).json({ error: "Database error" });
+        }
         election.status = newStatus;
       }
 

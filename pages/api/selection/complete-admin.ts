@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { supabaseAdmin } from "@/configs/supabase";
 import jwt from "jsonwebtoken";
 import { serialize, parse } from "cookie";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
 
@@ -38,11 +37,18 @@ export default async function handler(
     }
 
     // For safety, re-check user exists and is admin
-    const [rows] = await pool.query<RowDataPacket[]>(
-      "SELECT id, role FROM users WHERE id = ? LIMIT 1",
-      [payload.id]
-    );
-    if (rows.length === 0)
+    const { data: rows, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, role')
+      .eq('id', payload.id)
+      .limit(1);
+
+    if (userError) {
+      console.error("Supabase query error:", userError);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!rows || rows.length === 0)
       return res.status(404).json({ message: "User not found" });
 
     const user = rows[0];
@@ -58,22 +64,15 @@ export default async function handler(
       { expiresIn: "7d" }
     );
 
+    // Determine if we're in a secure context (HTTPS)
+    const isSecure = req.headers['x-forwarded-proto'] === 'https' || 
+                    (req.socket as any).encrypted || 
+                    process.env.NODE_ENV === 'production';
+
     const cookiesToSet = [
-      serialize("authToken", authToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      }),
+      `authToken=${authToken}; Path=/; HttpOnly; SameSite=Lax${isSecure ? '; Secure' : ''}; Max-Age=${60 * 60 * 24 * 7}`,
       // clear selection cookie
-      serialize("selection", "", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 0,
-      }),
+      `selection=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
     ];
 
     res.setHeader("Set-Cookie", cookiesToSet);

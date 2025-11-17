@@ -1,7 +1,6 @@
 // pages/api/candidates/approved.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
 interface Achievement {
   id: number;
@@ -10,7 +9,7 @@ interface Achievement {
   created_at: string;
 }
 
-interface Candidate extends RowDataPacket {
+interface Candidate {
   id: number;
   user_id: number;
   fullname: string;
@@ -18,7 +17,7 @@ interface Candidate extends RowDataPacket {
   election_title: string;
   position_id: number;
   position_name: string;
-  achievements: string; // Raw string (JSON-like) from MariaDB
+  achievements: string; // Raw string (JSON-like) from database
   photo_url?: string;
   partylist?: string;
   coc_file_url?: string;
@@ -47,6 +46,27 @@ interface ApprovedResponse {
   groupedByPosition: Record<string, ApprovedCandidate[]>;
 }
 
+interface SupabaseCandidateRow {
+  id: number;
+  user_id: number;
+  election_id: number;
+  position_id: number;
+  photo_url?: string;
+  partylist?: string;
+  coc_file_url?: string;
+  status: string;
+  created_at: string;
+  user?: Array<{ fullname: string; approval_status: string; user_status: string }>;
+  election?: Array<{ title: string }>;
+  position?: Array<{ name: string }>;
+  candidate_achievements?: Array<{
+    id: number;
+    title: string;
+    type: string;
+    created_at: string;
+  }>;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ApprovedResponse | { error: string }>
@@ -57,57 +77,76 @@ export default async function handler(
   }
 
   try {
-    // ✅ MariaDB-compatible JSON aggregation using GROUP_CONCAT
-    const [rows] = await pool.query<Candidate[]>(
-      `SELECT 
-         c.id,
-         c.user_id,
-         u.fullname,
-         c.election_id,
-         e.title AS election_title,
-         c.position_id,
-         p.name AS position_name,
-         COALESCE(
-           CONCAT(
-             '[',
-             GROUP_CONCAT(
-               CONCAT(
-                 '{"id":', ca.id,
-                 ',"title":"', IFNULL(ca.title, ''), '"',
-                 ',"type":"', IFNULL(ca.type, ''), '"',
-                 ',"created_at":"', IFNULL(ca.created_at, ''), '"}'
-               )
-             ),
-             ']'
-           ),
-           '[]'
-         ) AS achievements,
-         c.photo_url,
-         c.partylist,
-         c.coc_file_url,
-         c.status,
-         c.created_at
-       FROM candidates c
-       JOIN users u ON c.user_id = u.id
-       JOIN elections e ON c.election_id = e.id
-       JOIN positions p ON c.position_id = p.id
-       LEFT JOIN candidate_achievements ca ON ca.candidate_id = c.id
-       WHERE c.status = 'approved'
-         AND u.approval_status = 'approved'
-         AND u.user_status = 'active'
-       GROUP BY c.id, u.fullname, e.title, p.id, p.name
-       ORDER BY p.id, u.fullname ASC`
-    );
+    // Fetch approved candidates with their achievements using Supabase
+    const { data: rows, error } = await supabaseAdmin
+      .from('candidates')
+      .select(`
+        id,
+        user_id,
+        election_id,
+        position_id,
+        photo_url,
+        partylist,
+        coc_file_url,
+        status,
+        created_at,
+        user:users!inner (
+          fullname,
+          approval_status,
+          user_status
+        ),
+        election:elections!inner (
+          title
+        ),
+        position:positions!inner (
+          name
+        ),
+        candidate_achievements (
+          id,
+          title,
+          type,
+          created_at
+        )
+      `)
+      .eq('status', 'approved')
+      .eq('user.approval_status', 'approved')
+      .eq('user.user_status', 'active')
+      .order('position_id')
+      .order('user.fullname');
 
-    // ✅ Parse JSON achievements safely
+    if (error) {
+      console.error("❌ Supabase Error:", error);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Transform the data to match the expected structure
     const candidates: ApprovedCandidate[] = rows.map((row) => {
+      // Format achievements array
       let achievements: Achievement[] = [];
-      try {
-        achievements = JSON.parse(row.achievements || "[]");
-      } catch {
-        achievements = [];
+      if (row.candidate_achievements && Array.isArray(row.candidate_achievements)) {
+        achievements = row.candidate_achievements.map((ach) => ({
+          id: ach.id,
+          title: ach.title || '',
+          type: ach.type || '',
+          created_at: ach.created_at || ''
+        }));
       }
-      return { ...row, achievements };
+
+      return {
+        id: row.id,
+        user_id: row.user_id,
+        fullname: (row.user && row.user.length > 0) ? row.user[0].fullname : '',
+        election_id: row.election_id,
+        election_title: (row.election && row.election.length > 0) ? row.election[0].title : '',
+        position_id: row.position_id,
+        position_name: (row.position && row.position.length > 0) ? row.position[0].name : '',
+        achievements: achievements,
+        photo_url: row.photo_url || undefined,
+        partylist: row.partylist || undefined,
+        coc_file_url: row.coc_file_url || undefined,
+        status: row.status,
+        created_at: row.created_at
+      };
     });
 
     // ✅ Group candidates by position

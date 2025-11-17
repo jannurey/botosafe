@@ -152,18 +152,20 @@ const AdminDashboard: React.FC = () => {
   const voterTurnout: number =
     summary && summary.voters > 0 ? (summary.voted / summary.voters) * 100 : 0;
 
-  let participationPrediction: string = "Analyzing...";
+  let participationPrediction: string = "Awaiting voter data...";
   let participationColor: string = "#9E9E9E";
 
-  if (voterTurnout >= 80) {
-    participationPrediction = "High Participation";
-    participationColor = "#4CAF50"; // green
-  } else if (voterTurnout >= 50) {
-    participationPrediction = "Moderate Participation";
-    participationColor = "#FFB300"; // yellow
-  } else {
-    participationPrediction = "Low Participation";
-    participationColor = "#D32F2F"; // red
+  if (summary && summary.voters > 0) {
+    if (voterTurnout >= 80) {
+      participationPrediction = "High Participation";
+      participationColor = "#4CAF50"; // green
+    } else if (voterTurnout >= 50) {
+      participationPrediction = "Moderate Participation";
+      participationColor = "#FFB300"; // yellow
+    } else {
+      participationPrediction = "Low Participation";
+      participationColor = "#D32F2F"; // red
+    }
   }
 
   let competitionPrediction = "";
@@ -182,45 +184,52 @@ const AdminDashboard: React.FC = () => {
     } else {
       competitionPrediction = "Moderate Lead";
     }
+  } else if (results.length === 1) {
+    competitionPrediction = "Only one candidate registered";
+  } else {
+    competitionPrediction = "No candidates registered yet";
   }
 
   // Example of previous turnout (placeholder)
   const previousTurnout = 70;
   const decline = previousTurnout - voterTurnout;
-  if (decline > 15) {
+  if (decline > 15 && summary && summary.voters > 0) {
     participationPrediction = "Decline in Voter Engagement";
     participationColor = "#D32F2F";
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6 bg-gray-50 min-h-screen">
       {summary?.election && (
-        <h1 className="text-2xl sm:text-3xl font-bold text-center text-[#791010]">
-          {summary.election.title} ({summary.election.status.toUpperCase()})
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center text-[#791010] bg-white rounded-xl p-4 md:p-6 shadow">
+          {summary.election.title} <span className="text-gray-600">({summary.election.status.toUpperCase()})</span>
         </h1>
       )}
 
       {/* --- Voter Stats --- */}
       {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: "VOTERS", value: summary.voters, color: "#D32F2F" },
+            { label: "VOTERS", value: summary.voters, color: "#D32F2F", icon: "👥" },
             {
               label: "CANDIDATES",
               value: summary.candidates,
               color: "#1976D2",
+              icon: "👤"
             },
             {
               label: "TOTAL WHO VOTED",
               value: summary.voted,
               color: "#388E3C",
+              icon: "✅",
               remainder: Math.max(summary.voters - summary.voted, 0),
             },
           ].map((item, i) => (
             <div
               key={i}
-              className="bg-white shadow rounded-lg p-3 flex flex-col items-center"
+              className="bg-white shadow-lg rounded-xl p-4 flex flex-col items-center transition-transform hover:scale-105"
             >
+              <div className="text-2xl mb-2">{item.icon}</div>
               <VictoryPie
                 data={[
                   { x: "val", y: item.value ?? 0 },
@@ -236,38 +245,39 @@ const AdminDashboard: React.FC = () => {
                 height={140}
               />
               <div
-                className="mt-2 text-lg font-bold"
+                className="mt-2 text-xl font-bold"
                 style={{ color: item.color }}
               >
                 {item.value}
               </div>
-              <div className="text-sm text-gray-600">{item.label}</div>
+              <div className="text-sm text-gray-600 font-medium text-center">{item.label}</div>
             </div>
           ))}
 
-          <div className="bg-white shadow rounded-lg p-3 flex flex-col items-center justify-center">
+          <div className="bg-white shadow-lg rounded-xl p-4 flex flex-col items-center justify-center transition-transform hover:scale-105">
+            <div className="text-2xl mb-2">⏰</div>
             {phase === "before" && (
               <>
-                <div className="text-sm text-gray-700 uppercase">
+                <div className="text-sm text-gray-600 font-medium uppercase text-center">
                   Voting not started
                 </div>
-                <div className="mt-1 font-semibold text-[#791010] text-sm">
+                <div className="mt-1 font-bold text-[#791010] text-lg text-center">
                   Starts in: {formatTime(timeLeft)}
                 </div>
               </>
             )}
             {phase === "ongoing" && (
               <>
-                <div className="text-sm text-gray-700 uppercase">
+                <div className="text-sm text-gray-600 font-medium uppercase text-center">
                   Time remaining
                 </div>
-                <div className="mt-1 font-semibold text-[#791010] text-sm">
+                <div className="mt-1 font-bold text-[#791010] text-lg text-center">
                   {formatTime(timeLeft)}
                 </div>
               </>
             )}
             {phase === "ended" && (
-              <div className="text-lg font-semibold text-gray-600">
+              <div className="text-lg font-bold text-gray-700 text-center">
                 🛑 Voting has ended
               </div>
             )}
@@ -276,195 +286,244 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* --- Predictive Analytics Summary --- */}
-      <div className="bg-white rounded-xl p-4 shadow">
-        <h2 className="text-center text-[#791010] font-extrabold text-2xl mb-3">
+      <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg">
+        <h2 className="text-center text-[#791010] font-extrabold text-xl md:text-2xl mb-4 md:mb-6">
           🔮 Predictive Analytics Summary
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
           {/* Participation */}
-          <div className="p-3 border rounded-lg">
-            <h3 className="text-gray-600 font-semibold">Voter Turnout</h3>
-            <p
-              className="text-2xl font-bold"
-              style={{ color: participationColor }}
-            >
-              {voterTurnout.toFixed(1)}%
-            </p>
-            <p
-              className="text-sm font-semibold"
-              style={{ color: participationColor }}
-            >
-              {participationPrediction}
-            </p>
+          <div className="p-4 md:p-5 border-2 border-gray-200 rounded-xl hover:border-[#791010] transition-colors">
+            <h3 className="text-gray-800 font-bold text-lg mb-3">Voter Turnout</h3>
+            <div className="flex flex-col items-center justify-center space-y-3">
+              <p
+                className="text-3xl md:text-4xl font-extrabold"
+                style={{ color: participationColor }}
+              >
+                {voterTurnout.toFixed(1)}%
+              </p>
+              <p
+                className="text-sm md:text-base font-semibold px-3 py-1 rounded-full text-center"
+                style={{ 
+                  color: participationColor,
+                  backgroundColor: `${participationColor}20`
+                }}
+              >
+                {participationPrediction}
+              </p>
+            </div>
           </div>
 
           {/* Competition */}
-          <div className="p-3 border rounded-lg">
-            <h3 className="text-gray-600 font-semibold">Election Trend</h3>
-            <p className="text-xl font-bold text-[#1976D2]">
-              {competitionPrediction || "Analyzing..."}
-            </p>
+          <div className="p-4 md:p-5 border-2 border-gray-200 rounded-xl hover:border-[#1976D2] transition-colors">
+            <h3 className="text-gray-800 font-bold text-lg mb-3">Election Trend</h3>
+            <div className="flex items-center justify-center h-full">
+              <p className="text-lg md:text-xl font-bold text-[#1976D2] text-center">
+                {competitionPrediction}
+              </p>
+            </div>
           </div>
         </div>
 
         {/* --- Color Legend --- */}
-        <div className="mt-4 text-center text-sm text-gray-600">
-          <p className="font-semibold mb-1">Color Indicators:</p>
-          <div className="flex justify-center gap-4 text-xs sm:text-sm">
-            <div className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 bg-[#4CAF50] rounded-full"></span>{" "}
-              High Participation (≥ 80%)
+        <div className="mt-6 md:mt-8 pt-4 md:pt-6 border-t border-gray-200">
+          <p className="text-center font-semibold text-gray-700 mb-3 md:mb-4">Participation Color Indicators</p>
+          <div className="flex flex-wrap justify-center gap-2 md:gap-4">
+            <div className="flex items-center gap-2 bg-green-50 px-2 py-1 rounded-full">
+              <span className="inline-block w-2 h-2 md:w-3 md:h-3 bg-[#4CAF50] rounded-full"></span>
+              <span className="text-xs md:text-sm text-gray-700">High (≥ 80%)</span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 bg-[#FFB300] rounded-full"></span>{" "}
-              Moderate Participation (50–79%)
+            <div className="flex items-center gap-2 bg-amber-50 px-2 py-1 rounded-full">
+              <span className="inline-block w-2 h-2 md:w-3 md:h-3 bg-[#FFB300] rounded-full"></span>
+              <span className="text-xs md:text-sm text-gray-700">Moderate (50–79%)</span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 bg-[#D32F2F] rounded-full"></span>{" "}
-              Low Participation (&lt; 50%)
+            <div className="flex items-center gap-2 bg-red-50 px-2 py-1 rounded-full">
+              <span className="inline-block w-2 h-2 md:w-3 md:h-3 bg-[#D32F2F] rounded-full"></span>
+              <span className="text-xs md:text-sm text-gray-700">Low (&lt; 50%)</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* --- Results Per Position --- */}
-      <div className="bg-white rounded-xl p-4 shadow">
-        <h1 className="text-center text-[#791010] font-extrabold mb-2 text-2xl">
-          RESULT PER POSITION
+      <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg">
+        <h1 className="text-center text-[#791010] font-extrabold mb-4 md:mb-6 text-xl md:text-2xl">
+          📊 Result Per Position
         </h1>
-        <div className="space-y-6">
+        <div className="space-y-6 md:space-y-8">
           {Object.keys(groupedResults).length > 0 ? (
             Object.keys(groupedResults).map((position) => (
               <div
                 key={position}
-                className="bg-[#f7fbff] rounded-lg p-3 shadow-sm"
+                className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 md:p-5 shadow-sm border border-gray-100"
               >
-                <h2 className="text-center text-[#791010] font-bold mb-2 text-base sm:text-lg">
+                <h2 className="text-center text-[#791010] font-bold mb-4 text-lg md:text-xl">
                   {position.toUpperCase()}
                 </h2>
-                <VictoryChart
-                  theme={VictoryTheme.material}
-                  domainPadding={16}
-                  height={160}
-                  padding={{ top: 10, bottom: 40, left: 140, right: 30 }}
-                >
-                  <VictoryAxis
-                    dependentAxis
-                    style={{
-                      axis: { stroke: "transparent" },
-                      tickLabels: { fontSize: 11, fill: "#333" },
-                    }}
-                  />
-                  <VictoryAxis
-                    tickValues={voterTicks}
-                    tickFormat={(t) => `${t}`}
-                  />
-                  <VictoryBar
-                    horizontal
-                    cornerRadius={4}
-                    data={groupedResults[position]}
-                    x="candidate_name"
-                    y="vote_count"
-                    labels={({ datum }) => String(datum.vote_count)}
-                    labelComponent={
-                      <VictoryTooltip
-                        style={{ fontSize: 10 }}
-                        flyoutStyle={{ fill: "white" }}
-                      />
-                    }
-                    style={{
-                      data: { fill: "#1E88E5", width: 18 },
-                      labels: { fill: "#222", fontSize: 10 },
-                    }}
-                  />
-                </VictoryChart>
+                <div className="overflow-x-auto">
+                  <VictoryChart
+                    theme={VictoryTheme.material}
+                    domainPadding={16}
+                    height={180}
+                    padding={{ top: 10, bottom: 50, left: 150, right: 40 }}
+                    width={400}
+                  >
+                    <VictoryAxis
+                      dependentAxis
+                      style={{
+                        axis: { stroke: "transparent" },
+                        tickLabels: { fontSize: 10, fill: "#444", fontWeight: "bold" },
+                      }}
+                    />
+                    <VictoryAxis
+                      tickValues={voterTicks}
+                      tickFormat={(t) => `${t}`}
+                      style={{
+                        tickLabels: { fontSize: 10, fill: "#444", fontWeight: "bold" },
+                      }}
+                    />
+                    <VictoryBar
+                      horizontal
+                      cornerRadius={{ topLeft: 4, bottomLeft: 4 }}
+                      data={groupedResults[position]}
+                      x="candidate_name"
+                      y="vote_count"
+                      labels={({ datum }) => String(datum.vote_count)}
+                      labelComponent={
+                        <VictoryTooltip
+                          style={{ fontSize: 10, fill: "#333", fontWeight: "bold" }}
+                          flyoutStyle={{ fill: "white", stroke: "#ccc" }}
+                        />
+                      }
+                      style={{
+                        data: { fill: "#1E88E5", width: 20 },
+                        labels: { fill: "#222", fontSize: 10, fontWeight: "bold" },
+                      }}
+                    />
+                  </VictoryChart>
+                </div>
               </div>
             ))
           ) : (
-            <div className="text-center text-gray-500 py-6">
-              No results yet.
+            <div className="text-center py-8 md:py-12 bg-gray-50 rounded-xl">
+              <div className="text-4xl md:text-5xl mb-3">📊</div>
+              <p className="text-gray-600 text-base md:text-lg font-medium">No results available yet</p>
+              <p className="text-gray-500 mt-1 text-sm md:text-base">Results will appear once voting begins</p>
             </div>
           )}
         </div>
       </div>
 
       {/* --- Course Graphs --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
         {/* --- Registered Voters --- */}
-        <div className="bg-white rounded-xl p-4 shadow">
-          <h2 className="text-center text-[#791010] font-bold mb-3 text-lg">
-            NUMBER OF REGISTERED VOTERS BY COURSE / YEAR LEVEL
+        <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg">
+          <h2 className="text-center text-[#791010] font-bold mb-4 md:mb-6 text-lg md:text-xl">
+            👥 Registered Voters by Course/Year
           </h2>
-          <VictoryChart
-            domainPadding={20}
-            theme={VictoryTheme.material}
-            height={300}
-            padding={{ top: 10, bottom: 80, left: 60, right: 30 }}
-          >
-            <VictoryAxis
-              tickFormat={(t) => coursesByName[t] ?? ""}
-              style={{
-                tickLabels: { fontSize: 9, angle: -30, textAnchor: "end" },
-              }}
-            />
-            <VictoryAxis dependentAxis />
-
-            <VictoryStack
-              colorScale={["#1565C0", "#42A5F5", "#90CAF9", "#BBDEFB"]}
+          <div className="overflow-x-auto">
+            <VictoryChart
+              domainPadding={20}
+              theme={VictoryTheme.material}
+              height={300}
+              padding={{ top: 20, bottom: 100, left: 70, right: 40 }}
+              width={400}
             >
-              {yearLevels.map((year) => (
-                <VictoryBar
-                  key={year}
-                  data={courses.map((course) => {
-                    const entry = courseData.find(
-                      (d) => d.course === course && d.year_level === year
-                    );
-                    return { x: course, y: entry ? entry.voters : 0 };
-                  })}
-                  labels={({ datum }) => (datum.y > 0 ? datum.y : "")}
-                />
-              ))}
-            </VictoryStack>
-          </VictoryChart>
+              <VictoryAxis
+                tickFormat={(t) => coursesByName[t] ?? ""}
+                style={{
+                  tickLabels: { fontSize: 8, angle: -45, textAnchor: "end", fill: "#444", fontWeight: "bold" },
+                }}
+              />
+              <VictoryAxis 
+                dependentAxis
+                style={{
+                  tickLabels: { fill: "#444", fontWeight: "bold", fontSize: 8 },
+                }}
+              />
+
+              <VictoryStack
+                colorScale={["#1565C0", "#42A5F5", "#90CAF9", "#BBDEFB"]}
+              >
+                {yearLevels.map((year) => (
+                  <VictoryBar
+                    key={year}
+                    data={courses.map((course) => {
+                      const entry = courseData.find(
+                        (d) => d.course === course && d.year_level === year
+                      );
+                      return { x: course, y: entry ? entry.voters : 0 };
+                    })}
+                    labels={({ datum }) => (datum.y > 0 ? datum.y : "")}
+                    labelComponent={
+                      <VictoryTooltip
+                        style={{ fontSize: 9, fill: "#333", fontWeight: "bold" }}
+                        flyoutStyle={{ fill: "white", stroke: "#ccc" }}
+                      />
+                    }
+                    style={{
+                      labels: { fill: "#333", fontSize: 9, fontWeight: "bold" },
+                    }}
+                  />
+                ))}
+              </VictoryStack>
+            </VictoryChart>
+          </div>
         </div>
 
         {/* --- Turnout --- */}
-        <div className="bg-white rounded-xl p-4 shadow">
-          <h2 className="text-center text-[#791010] font-bold mb-3 text-lg">
-            VOTER TURNOUT BY COURSE / YEAR LEVEL
+        <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg">
+          <h2 className="text-center text-[#791010] font-bold mb-4 md:mb-6 text-lg md:text-xl">
+            📈 Voter Turnout by Course/Year
           </h2>
-          <VictoryChart
-            domainPadding={20}
-            theme={VictoryTheme.material}
-            height={300}
-            padding={{ top: 10, bottom: 80, left: 60, right: 30 }}
-          >
-            <VictoryAxis
-              tickFormat={(t) => coursesByName[t] ?? ""}
-              style={{
-                tickLabels: { fontSize: 9, angle: -30, textAnchor: "end" },
-              }}
-            />
-            <VictoryAxis dependentAxis />
-
-            <VictoryStack
-              colorScale={["#2E7D32", "#66BB6A", "#A5D6A7", "#C8E6C9"]}
+          <div className="overflow-x-auto">
+            <VictoryChart
+              domainPadding={20}
+              theme={VictoryTheme.material}
+              height={300}
+              padding={{ top: 20, bottom: 100, left: 70, right: 40 }}
+              width={400}
             >
-              {yearLevels.map((year) => (
-                <VictoryBar
-                  key={year}
-                  data={courses.map((course) => {
-                    const entry = courseData.find(
-                      (d) => d.course === course && d.year_level === year
-                    );
-                    return { x: course, y: entry ? entry.turnout ?? 0 : 0 };
-                  })}
-                  labels={({ datum }) => (datum.y > 0 ? datum.y : "")}
-                />
-              ))}
-            </VictoryStack>
-          </VictoryChart>
+              <VictoryAxis
+                tickFormat={(t) => coursesByName[t] ?? ""}
+                style={{
+                  tickLabels: { fontSize: 8, angle: -45, textAnchor: "end", fill: "#444", fontWeight: "bold" },
+                }}
+              />
+              <VictoryAxis 
+                dependentAxis
+                style={{
+                  tickLabels: { fill: "#444", fontWeight: "bold", fontSize: 8 },
+                }}
+              />
+
+              <VictoryStack
+                colorScale={["#2E7D32", "#66BB6A", "#A5D6A7", "#C8E6C9"]}
+              >
+                {yearLevels.map((year) => (
+                  <VictoryBar
+                    key={year}
+                    data={courses.map((course) => {
+                      const entry = courseData.find(
+                        (d) => d.course === course && d.year_level === year
+                      );
+                      return { x: course, y: entry ? entry.turnout ?? 0 : 0 };
+                    })}
+                    labels={({ datum }) => (datum.y > 0 ? datum.y : "")}
+                    labelComponent={
+                      <VictoryTooltip
+                        style={{ fontSize: 9, fill: "#333", fontWeight: "bold" }}
+                        flyoutStyle={{ fill: "white", stroke: "#ccc" }}
+                      />
+                    }
+                    style={{
+                      labels: { fill: "#333", fontSize: 9, fontWeight: "bold" },
+                    }}
+                  />
+                ))}
+              </VictoryStack>
+            </VictoryChart>
+          </div>
         </div>
       </div>
     </div>

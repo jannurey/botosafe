@@ -1,9 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 import crypto from "crypto";
 
-interface ElectionRow extends RowDataPacket {
+interface ElectionRow {
   id: number;
   title: string;
   status: string;
@@ -11,18 +10,18 @@ interface ElectionRow extends RowDataPacket {
   end_time: string;
 }
 
-interface CandidateRow extends RowDataPacket {
+interface CandidateRow {
   id: number;
   position_id: number;
   position_name: string;
   candidate_name: string;
 }
 
-interface VoteRow extends RowDataPacket {
+interface VoteRow {
   encrypted_vote: string;
 }
 
-interface TurnoutRow extends RowDataPacket {
+interface TurnoutRow {
   course: string;
   year_level: string;
   total_voters: number;
@@ -85,11 +84,18 @@ export default async function handler(
 
   try {
     // 🔹 Get elections
-    const [elections] = await pool.query<ElectionRow[]>(
-      "SELECT * FROM elections ORDER BY start_time DESC"
-    );
+    const { data: elections, error: electionError } = await supabaseAdmin
+      .from('elections')
+      .select('*')
+      .order('start_time', { ascending: false });
 
-    if (!elections.length) {
+    if (electionError) {
+      console.error("Supabase election query error:", electionError);
+      res.status(500).json({ error: "Database error" });
+      return;
+    }
+
+    if (!elections || elections.length === 0) {
       res.status(200).json({ election: null, results: [], turnout: [] });
       return;
     }
@@ -103,11 +109,16 @@ export default async function handler(
       const status =
         now < start ? "upcoming" : now <= end ? "ongoing" : "closed";
       if (status !== e.status) {
-        await pool.query<ResultSetHeader>(
-          "UPDATE elections SET status = ? WHERE id = ?",
-          [status, e.id]
-        );
-        e.status = status;
+        const { error: updateError } = await supabaseAdmin
+          .from('elections')
+          .update({ status: status })
+          .eq('id', e.id);
+
+        if (updateError) {
+          console.error("Supabase update error:", updateError);
+        } else {
+          e.status = status;
+        }
       }
     }
 
@@ -116,30 +127,44 @@ export default async function handler(
       elections.find((e) => e.status === "ongoing") ||
       elections.find((e) => e.status === "closed");
 
-    if (!election) {
+    // If no election exists, return default values
+    if (!election || !election.id) {
       res.status(200).json({ election: null, results: [], turnout: [] });
       return;
     }
 
     // 🔹 Fetch all candidates
-    const [candidates] = await pool.query<CandidateRow[]>(
-      `SELECT 
-         c.id,
-         p.id AS position_id,
-         p.name AS position_name,
-         u.fullname AS candidate_name
-       FROM candidates c
-       JOIN positions p ON p.id = c.position_id
-       JOIN users u ON u.id = c.user_id
-       WHERE c.election_id = ?`,
-      [election.id]
-    );
+    const { data: candidates, error: candidateError } = await supabaseAdmin
+      .from('candidates')
+      .select(`
+        id,
+        position_id,
+        position:positions (
+          name
+        ),
+        user:users (
+          fullname
+        )
+      `)
+      .eq('election_id', election.id);
+
+    if (candidateError) {
+      console.error("Supabase candidate query error:", candidateError);
+      res.status(500).json({ error: "Database error" });
+      return;
+    }
 
     // 🔹 Fetch all encrypted votes
-    const [votes] = await pool.query<VoteRow[]>(
-      "SELECT encrypted_vote FROM votes WHERE election_id = ?",
-      [election.id]
-    );
+    const { data: votes, error: voteError } = await supabaseAdmin
+      .from('votes')
+      .select('encrypted_vote')
+      .eq('election_id', election.id);
+
+    if (voteError) {
+      console.error("Supabase vote query error:", voteError);
+      res.status(500).json({ error: "Database error" });
+      return;
+    }
 
     // 🔹 Decrypt & Count Votes
     const voteCounts: Record<number, number> = {};
@@ -167,25 +192,59 @@ export default async function handler(
     const results: ResultData[] = candidates.map((c) => ({
       candidate_id: c.id,
       position_id: c.position_id,
-      position_name: c.position_name,
-      candidate_name: c.candidate_name,
+      position_name: c.position && c.position.length > 0 ? c.position[0].name : '',
+      candidate_name: c.user && c.user.length > 0 ? c.user[0].fullname : '',
       vote_count: voteCounts[c.id] || 0,
     }));
 
     // 🔹 Fetch turnout
-    const [turnout] = await pool.query<TurnoutRow[]>(
-      `SELECT 
-         u.course,
-         u.year_level,
-         COUNT(u.id) AS total_voters,
-         COUNT(DISTINCT v.user_id) AS voted
-       FROM users u
-       LEFT JOIN votes v ON u.id = v.user_id AND v.election_id = ?
-       WHERE u.role = 'voter'
-       GROUP BY u.course, u.year_level
-       ORDER BY u.course, u.year_level`,
-      [election.id]
-    );
+    const { data: turnout, error: turnoutError } = await supabaseAdmin
+      .from('users')
+      .select(`
+        course,
+        year_level,
+        votes (
+          user_id
+        )
+      `)
+      .eq('role', 'voter');
+
+    if (turnoutError) {
+      console.error("Supabase turnout query error:", turnoutError);
+      res.status(500).json({ error: "Database error" });
+      return;
+    }
+
+    // Process turnout data
+    const turnoutMap: Record<string, TurnoutRow> = {};
+    
+    turnout.forEach(user => {
+      // Skip users with null course or year_level
+      if (!user.course || !user.year_level) {
+        return;
+      }
+      
+      const key = `${user.course}-${user.year_level}`;
+      if (!turnoutMap[key]) {
+        turnoutMap[key] = {
+          course: user.course || '',
+          year_level: user.year_level || '',
+          total_voters: 0,
+          voted: 0
+        };
+      }
+      
+      turnoutMap[key].total_voters++;
+      
+      // Check if user has voted in this election
+      if (user.votes && Array.isArray(user.votes)) {
+        if (user.votes.length > 0) {
+          turnoutMap[key].voted++;
+        }
+      }
+    });
+
+    const turnoutArray = Object.values(turnoutMap);
 
     res.status(200).json({
       election: {
@@ -194,7 +253,7 @@ export default async function handler(
         status: election.status,
       },
       results,
-      turnout,
+      turnout: turnoutArray,
     });
   } catch (err) {
     console.error("❌ Error fetching results:", err);

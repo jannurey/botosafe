@@ -1,6 +1,6 @@
+// pages/api/settings/public.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
+import { settings } from "@/lib/supabaseClient";
 
 /**
  * Public settings endpoint.
@@ -24,18 +24,24 @@ export default async function handler(
       return res.status(405).json({ message: "Method Not Allowed" });
     }
 
-    const placeholders = SAFE_KEYS.map(() => "?").join(",");
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT k, v FROM settings WHERE k IN (${placeholders})`,
-      SAFE_KEYS
-    );
+    const { data: rows, error } = await settings.getByKeys(SAFE_KEYS);
+    
+    if (error) {
+      console.error("Error fetching settings:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
 
     const out: Record<string, unknown> = {};
-    for (const r of rows) {
-      try {
-        out[r.k] = JSON.parse(JSON.stringify(r.v));
-      } catch {
-        out[r.k] = r.v;
+    if (rows) {
+      for (const r of rows) {
+        // Skip rows without a key
+        if (!r.k) continue;
+          
+        try {
+          out[r.k] = JSON.parse(JSON.stringify(r.v));
+        } catch {
+          out[r.k] = r.v;
+        }
       }
     }
 
@@ -47,13 +53,12 @@ export default async function handler(
       out.site_timezone = "UTC";
     }
     if (!Object.prototype.hasOwnProperty.call(out, "default_school_year")) {
-      out.default_school_year = null;
+      out.default_school_year = new Date().getFullYear().toString();
     }
 
     return res.status(200).json(out);
   } catch (err: unknown) {
-    // eslint-disable-next-line no-console
-    console.error("GET /api/settings/public error:", err);
-    return res.status(500).json({ message: "Internal Server Error" });
+    console.error("Settings API error:", err);
+    return res.status(500).json({ message: "Internal server error" });
   }
 }

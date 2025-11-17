@@ -2,7 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import transporter from "@/lib/nodemailer";
-import { pool } from "@/configs/database";
+import { supabaseAdmin } from "@/configs/supabase";
 
 export default async function handler(
   req: NextApiRequest,
@@ -16,14 +16,13 @@ export default async function handler(
     return res.status(400).json({ message: "Email is required" });
 
   try {
-    const [rows] = await pool.execute(
-      "SELECT id, email FROM users WHERE email = ?",
-      [email]
-    );
-    const users = rows as any[];
+    const { data: users, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, email')
+      .eq('email', email);
 
     // Prevent user enumeration: always respond with success message.
-    if (!users.length) {
+    if (!users || users.length === 0) {
       return res.status(200).json({
         message: "Password reset link sent to your email",
       });
@@ -36,13 +35,21 @@ export default async function handler(
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
 
-    // Upsert into password_resets (user_id unique)
-    await pool.execute(
-      `INSERT INTO password_resets (user_id, token_hash, expires_at)
-       VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE token_hash = VALUES(token_hash), expires_at = VALUES(expires_at)`,
-      [user.id, tokenHash, expiresAt]
-    );
+    // Upsert into password_resets
+    const { error: upsertError } = await supabaseAdmin
+      .from('password_resets')
+      .upsert({
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: expiresAt.toISOString()
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (upsertError) {
+      console.error("Supabase upsert error:", upsertError);
+      return res.status(500).json({ message: "Database error" });
+    }
 
     // Build reset URL from headers (works behind proxies) or fallback to APP_URL
     const protoHeader =
@@ -73,7 +80,11 @@ export default async function handler(
       from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
       to: user.email,
       subject: "Password reset request",
-      text: `You requested a password reset. Use the link below to reset your password:\n\n${resetUrl}\n\nIf you did not request this, ignore this email.`,
+      text: `You requested a password reset. Use the link below to reset your password:
+
+${resetUrl}
+
+If you did not request this, ignore this email.`,
       html: `<p>You requested a password reset. Click the link below to reset your password:</p>
              <p><a href="${resetUrl}">Reset my password</a></p>
              <p>If you did not request this, ignore this email.</p>`,

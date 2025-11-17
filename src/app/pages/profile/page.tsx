@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { FiSettings, FiEdit2 } from "react-icons/fi";
+import { FiEdit2 } from "react-icons/fi";
 import Header from "@/components/partials/Header";
+import Footer from "@/components/partials/Footer";
 import Image from "next/image";
 
 // 🔹 Types
@@ -69,7 +70,6 @@ export default function ProfilePage() {
   const [activeModal, setActiveModal] = useState<
     "edit" | "applications" | null
   >(null);
-  const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const [showConfirm, setShowConfirm] = useState<boolean>(false);
 
   // edit profile / change password
@@ -128,9 +128,55 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchUser = async (): Promise<void> => {
       try {
+        // Check for temporary auth token first
+        const tempAuthToken = localStorage.getItem("tempAuthToken");
+        if (tempAuthToken) {
+          try {
+            // Decode the temporary token
+            const decodedTempToken = JSON.parse(atob(tempAuthToken));
+            const userId = decodedTempToken.userId;
+            const exp = decodedTempToken.exp;
+            
+            // Check if token is still valid
+            if (Date.now() < exp && userId) {
+              // Use temporary authentication
+              const res = await fetch("/api/users/me", {
+                method: "GET",
+                credentials: "include",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-temp-login": "true",
+                  "x-user-id": userId.toString(),
+                },
+              });
+
+              if (res.ok) {
+                const data: { user: User } = await res.json();
+                setUser(data.user);
+                setLoading(false);
+                return;
+              } else {
+                // Clear invalid temp token
+                localStorage.removeItem("tempAuthToken");
+              }
+            } else {
+              // Token expired, clear it
+              localStorage.removeItem("tempAuthToken");
+            }
+          } catch (decodeError) {
+            // Invalid token format, clear it
+            localStorage.removeItem("tempAuthToken");
+          }
+        }
+        
+        // For regular authentication, we don't check the cookie directly since it's HttpOnly
+        // Instead, we just try to fetch the user data
         const res = await fetch("/api/users/me", {
           method: "GET",
           credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
         });
         if (!res.ok) {
           router.push("/signin/login");
@@ -189,7 +235,19 @@ export default function ProfilePage() {
         credentials: "include",
       });
       if (res.ok) {
+        // Clear local storage items
         localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        localStorage.removeItem("tempLogin");
+        localStorage.removeItem("userId");
+        localStorage.removeItem("username");
+        localStorage.removeItem("userRole");
+        localStorage.removeItem("tempAuthToken");
+        
+        // Dispatch a custom event to notify other components
+        window.dispatchEvent(new CustomEvent("user-logout"));
+        
+        // Redirect to login page
         router.push("/signin/login");
       }
     } catch (err) {
@@ -231,253 +289,457 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-100 via-pink-100 to-red-100">
-        <p className="text-gray-600 animate-pulse text-lg">Loading...</p>
+        <div className="text-center p-8 bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg max-w-md w-full mx-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#791010] mx-auto mb-4"></div>
+          <p className="text-gray-700 font-medium">Loading your profile...</p>
+        </div>
       </main>
     );
   }
   if (!user) return null;
 
   return (
-    <main className="relative min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-red-100">
-      {/* Watermark Logo */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
-        <Image
-          src="/images/botosafe-logo.png"
-          alt="Logo Watermark"
-          fill
-          className="object-contain opacity-5"
-          priority
-        />
-      </div>
-
-      <Header />
-
-      {/* Settings Icon */}
-      <div className="flex justify-end pr-6 mt-6 relative z-50">
-        <button
-          onClick={() => setMenuOpen((prev) => !prev)}
-          className="p-3 rounded-full bg-white/80 shadow hover:bg-white transition relative z-50"
-        >
-          <FiSettings className="text-xl text-[#791010]" />
-        </button>
-
-        {menuOpen && (
-          <div className="absolute right-0 mt-12 w-48 bg-white/95 backdrop-blur-md border rounded-lg shadow-lg overflow-hidden z-[60]">
-            <button
-              onClick={() => {
-                setActiveModal("edit");
-                setMenuOpen(false);
-              }}
-              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-            >
-              Edit Profile
-            </button>
-            <button
-              onClick={() => {
-                setActiveModal("applications");
-                setMenuOpen(false);
-              }}
-              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-            >
-              My Applications
-            </button>
-            <button
-              onClick={() => setShowConfirm(true)}
-              className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100"
-            >
-              Log Out
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Profile Section */}
-      <div className="relative z-10 max-w-6xl mx-auto px-4 mt-6">
-        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 p-6 flex flex-col lg:flex-row gap-6">
-          {/* Left Column */}
-          <div className="flex flex-col items-center lg:items-start gap-4 w-full lg:w-1/3">
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#791010] to-[#b11c1c] flex items-center justify-center text-white text-4xl font-bold shadow-md">
-              {user.fullname?.charAt(0) ?? "U"}
-            </div>
-            <h2 className="text-2xl font-bold text-[#791010]">
-              {user.fullname}
-            </h2>
-            <p className="text-gray-600">{user.email}</p>
-            <p className="text-sm text-gray-500">
-              🎓 {user.course} • {user.year_level}
-            </p>
-            <button
-              onClick={() => setActiveModal("edit")}
-              className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white text-sm hover:opacity-90 transition"
-            >
-              <FiEdit2 /> Edit Profile
-            </button>
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-red-100">
+        <main className="relative overflow-x-hidden pb-8">
+          {/* Watermark Logo */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+            <Image
+              src="/images/botosafe-logo.png"
+              alt="Logo Watermark"
+              fill
+              className="object-contain opacity-5"
+              priority
+            />
           </div>
 
-          {/* Right Column */}
-          <div className="w-full lg:w-2/3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ProfileField label="School ID" value={user.school_id} />
-            <ProfileField label="Age" value={user.age} />
-            <ProfileField label="Status" value={user.status} />
-            <ProfileField label="Gender" value={user.gender} />
-            <ProfileField label="Course" value={user.course} />
-            <ProfileField label="Year Level" value={user.year_level} />
-            <ProfileField label="Email" value={user.email} />
-          </div>
-        </div>
-      </div>
+          <Header />
 
-      {/* 🔹 Modals */}
-      {activeModal === "edit" && (
-        <Modal title="Edit Profile" onClose={() => setActiveModal(null)}>
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSaveProfile(new FormData(e.currentTarget));
-            }}
-          >
-            <InputField
-              name="fullname"
-              label="Full Name"
-              defaultValue={user.fullname}
-            />
-            <InputField name="email" label="Email" defaultValue={user.email} />
-            <InputField
-              name="school_id"
-              label="School ID"
-              defaultValue={user.school_id ?? ""}
-            />
-            <InputField
-              name="course"
-              label="Course"
-              defaultValue={user.course ?? ""}
-            />
-            <InputField
-              name="age"
-              label="Age"
-              defaultValue={user.age?.toString() ?? ""}
-            />
-
-            <SelectField
-              name="year_level"
-              label="Year Level"
-              defaultValue={user.year_level ?? ""}
-              options={[
-                "1st Year",
-                "2nd Year",
-                "3rd Year",
-                "4th Year",
-                "5th Year",
-              ]}
-            />
-            <SelectField
-              name="status"
-              label="Status"
-              defaultValue={user.status ?? ""}
-              options={["Active", "Inactive", "Graduated"]}
-            />
-            <SelectField
-              name="gender"
-              label="Gender"
-              defaultValue={user.gender ?? ""}
-              options={["Male", "Female", "Other"]}
-            />
-
-            <InputField name="password" label="New Password" defaultValue="" />
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white rounded-lg shadow-md hover:opacity-90 transition"
-            >
-              Save Changes
-            </button>
-          </form>
-        </Modal>
-      )}
-
-      {activeModal === "applications" && (
-        <Modal title="My Applications" onClose={() => setActiveModal(null)}>
-          {appsLoading ? (
-            <p className="text-gray-600">Loading applications...</p>
-          ) : applications.length > 0 ? (
-            <div className="space-y-4">
-              {applications.map((app) => (
-                <div
-                  key={app.id}
-                  className="p-5 border rounded-xl shadow-sm bg-white/80 hover:shadow-md transition flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                >
-                  <div>
-                    <p className="font-semibold text-gray-800 text-lg">
-                      {app.position_name} — {app.election_title}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {app.description}
-                    </p>
-                    <p className="text-xs mt-2">
-                      Status:{" "}
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          app.status === "approved"
-                            ? "bg-green-100 text-green-700"
-                            : app.status === "pending"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {app.status}
-                      </span>
-                    </p>
+          {/* Profile Section */}
+          <div className="relative z-10 max-w-6xl mx-auto px-4 mt-6">
+            {/* Header Section with Profile Card */}
+            <div className="bg-gradient-to-r from-[#791010] to-[#b11c1c] rounded-2xl shadow-xl p-6 mb-6">
+              <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+                <div className="relative">
+                  <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center text-[#791010] text-3xl font-bold border-4 border-white shadow-lg">
+                    {user.fullname?.charAt(0) ?? "U"}
                   </div>
-                  <div className="flex gap-2">
-                    {app.coc_file_url && (
-                      <a
-                        href={app.coc_file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2 text-xs rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition"
-                      >
-                        View CoC
-                      </a>
-                    )}
+                  <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-2 shadow-md">
+                    <FiEdit2 className="text-[#791010]" />
+                  </div>
+                </div>
+                <div className="text-center md:text-left text-white flex-1">
+                  <h1 className="text-2xl font-bold">{user.fullname}</h1>
+                  <p className="text-white/90 mb-2">{user.email}</p>
+                  <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-3">
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">
+                      🎓 {user.course}
+                    </span>
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">
+                      {user.year_level}
+                    </span>
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">
+                      ID: {user.school_id}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setActiveModal("edit")}
+                    className="bg-white text-[#791010] px-4 py-2 rounded-lg font-medium hover:bg-white/90 transition flex items-center gap-2"
+                  >
+                    <FiEdit2 size={16} /> Edit Profile
+                  </button>
+                  <button
+                    onClick={() => setShowConfirm(true)}
+                    className="bg-white/20 text-white px-4 py-2 rounded-lg font-medium hover:bg-white/30 transition"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column - Personal Info */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Personal Information Card */}
+                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-[#791010]">Personal Information</h2>
                     <button
-                      onClick={() => handleWithdraw(app.id)}
-                      className="px-4 py-2 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition"
+                      onClick={() => setActiveModal("edit")}
+                      className="text-[#791010] hover:underline text-sm font-medium"
                     >
-                      Withdraw
+                      Edit
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">Full Name</p>
+                      <p className="font-semibold">{user.fullname}</p>
+                    </div>
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">Email</p>
+                      <p className="font-semibold">{user.email}</p>
+                    </div>
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">School ID</p>
+                      <p className="font-semibold">{user.school_id || "Not set"}</p>
+                    </div>
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">Age</p>
+                      <p className="font-semibold">{user.age || "Not set"}</p>
+                    </div>
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">Course</p>
+                      <p className="font-semibold">{user.course || "Not set"}</p>
+                    </div>
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">Year Level</p>
+                      <p className="font-semibold">{user.year_level || "Not set"}</p>
+                    </div>
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">Gender</p>
+                      <p className="font-semibold">{user.gender || "Not set"}</p>
+                    </div>
+                    <div className="border-l-4 border-[#791010] pl-4 py-1">
+                      <p className="text-sm text-gray-700">Status</p>
+                      <p className="font-semibold">{user.status || "Not set"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Applications Section */}
+                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-[#791010]">My Applications</h2>
+                    <button
+                      onClick={() => setActiveModal("applications")}
+                      className="text-[#791010] hover:underline text-sm font-medium"
+                    >
+                      View All
+                    </button>
+                  </div>
+                
+                  {appsLoading ? (
+                    <div className="flex justify-center items-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#791010]"></div>
+                    </div>
+                  ) : applications.length > 0 ? (
+                    <div className="space-y-4">
+                      {applications.slice(0, 3).map((app) => (
+                        <div key={app.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                          <div className="flex justify-between">
+                            <h3 className="font-bold text-gray-800">{app.position_name}</h3>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              app.status === "approved"
+                                ? "bg-green-100 text-green-700"
+                                : app.status === "pending"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-red-100 text-red-700"
+                            }`}>
+                              {formatStatusLabel(app.status)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-1">{app.election_title}</p>
+                          <div className="flex justify-between items-center mt-3">
+                            <span className="text-xs text-gray-700">
+                              Filed on {new Date().toLocaleDateString()}
+                            </span>
+                            {app.coc_file_url && (
+                              <a
+                                href={app.coc_file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-[#791010] hover:underline"
+                              >
+                                View CoC
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {applications.length > 3 && (
+                        <div className="text-center pt-2">
+                          <p className="text-sm text-gray-500">
+                            + {applications.length - 3} more applications
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="text-4xl mb-3">📝</div>
+                      <p className="text-gray-700 mb-4">You haven&apos;t filed any applications yet</p>
+                      <button
+                        onClick={() => router.push('/pages/candidates')}
+                        className="bg-[#791010] text-white px-4 py-2 rounded-lg hover:opacity-90 transition text-sm font-medium"
+                      >
+                        File a Candidacy
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column - Quick Stats and Actions */}
+              <div className="space-y-6">
+                {/* Quick Stats */}
+                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 p-6">
+                  <h2 className="text-xl font-bold text-[#791010] mb-4">Quick Stats</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gradient-to-br from-[#791010]/10 to-[#b11c1c]/10 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-[#791010]">{applications.length}</p>
+                      <p className="text-sm text-gray-600">Total Applications</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-green-600">
+                        {applications.filter(app => app.status === 'approved').length}
+                      </p>
+                      <p className="text-sm text-gray-600">Approved</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-yellow-500/10 to-yellow-600/10 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-yellow-600">
+                        {applications.filter(app => app.status === 'pending').length}
+                      </p>
+                      <p className="text-sm text-gray-600">Pending</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-blue-600">
+                        {applications.filter(app => app.status === 'declined').length}
+                      </p>
+                      <p className="text-sm text-gray-600">Declined</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 p-6">
+                  <h2 className="text-xl font-bold text-[#791010] mb-4">Quick Actions</h2>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => router.push('/pages/candidates')}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 transition"
+                    >
+                      <div className="bg-[#791010]/10 p-2 rounded-lg">
+                        <span className="text-[#791010]">🗳️</span>
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-800">File Candidacy</p>
+                        <p className="text-xs text-gray-500">Apply for a position</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => router.push('/pages/vote')}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 transition"
+                    >
+                      <div className="bg-[#791010]/10 p-2 rounded-lg">
+                        <span className="text-[#791010]">✅</span>
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-800">Cast Vote</p>
+                        <p className="text-xs text-gray-500">Participate in elections</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => router.push('/pages/dashboard')}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 transition"
+                    >
+                      <div className="bg-[#791010]/10 p-2 rounded-lg">
+                        <span className="text-[#791010]">📊</span>
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-800">View Results</p>
+                        <p className="text-xs text-gray-500">Check election results</p>
+                      </div>
                     </button>
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
-          ) : (
-            <p className="text-gray-600 italic">No applications found.</p>
-          )}
-        </Modal>
-      )}
-
-      {showConfirm && (
-        <Modal title="Confirm Logout" onClose={() => setShowConfirm(false)}>
-          <p className="text-gray-600 mb-6">
-            Are you sure you want to log out?
-          </p>
-          <div className="flex justify-between gap-4">
-            <button
-              onClick={() => setShowConfirm(false)}
-              className="flex-1 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex-1 py-2 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 transition"
-            >
-              Yes, Logout
-            </button>
           </div>
-        </Modal>
-      )}
-    </main>
+
+          {/* 🔹 Modals */}
+          {activeModal === "edit" && (
+            <Modal title="Edit Profile" onClose={() => setActiveModal(null)}>
+              <form
+                className="space-y-5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSaveProfile(new FormData(e.currentTarget));
+                }}
+              >
+                <InputField
+                  name="fullname"
+                  label="Full Name"
+                  defaultValue={user.fullname}
+                />
+                <InputField name="email" label="Email" defaultValue={user.email} />
+                <InputField
+                  name="school_id"
+                  label="School ID"
+                  defaultValue={user.school_id ?? ""}
+                />
+                <InputField
+                  name="course"
+                  label="Course"
+                  defaultValue={user.course ?? ""}
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <InputField
+                    name="age"
+                    label="Age"
+                    defaultValue={user.age?.toString() ?? ""}
+                  />
+                  <SelectField
+                    name="gender"
+                    label="Gender"
+                    defaultValue={user.gender ?? ""}
+                    options={["Male", "Female", "Other"]}
+                  />
+                </div>
+              
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <SelectField
+                    name="year_level"
+                    label="Year Level"
+                    defaultValue={user.year_level ?? ""}
+                    options={[
+                      "1st Year",
+                      "2nd Year",
+                      "3rd Year",
+                      "4th Year",
+                      "5th Year",
+                    ]}
+                  />
+                  <SelectField
+                    name="status"
+                    label="Status"
+                    defaultValue={user.status ?? ""}
+                    options={["Active", "Inactive", "Graduated"]}
+                  />
+                </div>
+
+                <div className="border-t border-gray-200/50 pt-5">
+                  <InputField name="password" label="New Password (leave blank to keep current)" defaultValue="" />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white rounded-lg shadow-md hover:opacity-90 transition font-medium"
+                >
+                  Save Changes
+                </button>
+              </form>
+            </Modal>
+          )}
+
+          {activeModal === "applications" && (
+            <Modal title="My Applications" onClose={() => setActiveModal(null)}>
+              {appsLoading ? (
+                <div className="flex justify-center items-center py-12">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#791010]"></div>
+                </div>
+              ) : applications.length > 0 ? (
+                <div className="space-y-4">
+                  {applications.map((app) => (
+                    <div
+                      key={app.id}
+                      className="p-5 border rounded-xl shadow-sm bg-white/80 hover:shadow-md transition flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                    >
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-800 text-lg">
+                          {app.position_name} — {app.election_title}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-2">
+                          {app.description}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              app.status === "approved"
+                                ? "bg-green-100 text-green-700"
+                                : app.status === "pending"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {formatStatusLabel(app.status)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {app.coc_file_url && (
+                          <a
+                            href={app.coc_file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-2 text-sm rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition font-medium"
+                          >
+                            View CoC
+                          </a>
+                        )}
+                        {app.status === "pending" && (
+                          <button
+                            onClick={() => handleWithdraw(app.id)}
+                            className="px-4 py-2 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition font-medium"
+                          >
+                            Withdraw
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-5xl mb-4">📝</div>
+                  <p className="text-gray-600 mb-6">
+                    You haven&apos;t filed any candidacy applications yet.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveModal(null);
+                      router.push('/pages/candidates');
+                    }}
+                    className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 transition font-medium"
+                  >
+                    File a Candidacy Now
+                  </button>
+                </div>
+              )}
+            </Modal>
+          )}
+
+          {showConfirm && (
+            <Modal title="Confirm Logout" onClose={() => setShowConfirm(false)}>
+              <div className="text-center py-4">
+                <div className="text-4xl mb-4">👋</div>
+                <p className="text-gray-600 mb-8">
+                  Are you sure you want to log out?
+                </p>
+                <div className="flex justify-between gap-4">
+                  <button
+                    onClick={() => setShowConfirm(false)}
+                    className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 py-2.5 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 transition font-medium"
+                  >
+                    Yes, Logout
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
+        </main>
+      </div>
+    </>
   );
 }
 
@@ -492,11 +754,11 @@ function Modal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
-      <div className="relative w-full max-w-lg bg-gradient-to-br from-white/90 via-pink-50 to-red-50 backdrop-blur-lg border border-white/60 rounded-2xl shadow-2xl overflow-hidden animate-fadeIn">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50 p-4">
+      <div className="relative w-full max-w-2xl bg-gradient-to-br from-white/90 via-pink-50 to-red-50 backdrop-blur-lg border border-white/60 rounded-2xl shadow-2xl overflow-hidden animate-fadeIn">
         <div className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white font-semibold text-lg">
           <h2>{title}</h2>
-          <button onClick={onClose} className="hover:opacity-80 transition">
+          <button onClick={onClose} className="hover:opacity-80 transition text-xl">
             ✕
           </button>
         </div>
@@ -540,9 +802,9 @@ function ProfileField({
   value: string | number | undefined;
 }) {
   return (
-    <div className="bg-white/60 p-3 rounded-lg border border-white/40 hover:shadow-md transition">
-      <p className="text-xs uppercase text-gray-500">{label}</p>
-      <p className="font-semibold text-lg text-gray-800">{value ?? "-"}</p>
+    <div className="bg-white/60 p-4 rounded-lg border border-white/40 hover:shadow-md transition shadow-sm">
+      <p className="text-xs uppercase text-gray-500 tracking-wide font-medium">{label}</p>
+      <p className="font-semibold text-lg text-gray-800 mt-1">{value ?? "-"}</p>
     </div>
   );
 }
@@ -559,14 +821,14 @@ function InputField({
 }) {
   return (
     <div>
-      <label className="text-sm font-medium text-gray-600 block mb-1">
+      <label className="text-sm font-medium text-gray-700 block mb-2">
         {label}
       </label>
       <input
         type="text"
         name={name}
         defaultValue={defaultValue}
-        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm"
+        className="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm placeholder-gray-500 shadow-sm"
       />
     </div>
   );
@@ -586,17 +848,17 @@ function SelectField({
 }) {
   return (
     <div>
-      <label className="text-sm font-medium text-gray-600 block mb-1">
+      <label className="text-sm font-medium text-gray-700 block mb-2">
         {label}
       </label>
       <select
         name={name}
         defaultValue={defaultValue}
-        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm"
+        className="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm shadow-sm text-gray-700"
       >
-        <option value="">-- Select {label} --</option>
+        <option value="" className="text-gray-500">-- Select {label} --</option>
         {options.map((opt) => (
-          <option key={opt} value={opt}>
+          <option key={opt} value={opt} className="text-gray-700">
             {opt}
           </option>
         ))}

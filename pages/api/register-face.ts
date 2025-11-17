@@ -1,6 +1,7 @@
+// pages/api/register-face.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { userFaces } from "@/lib/supabaseClient";
+import jwt from "jsonwebtoken";
 
 // ------------------- UTILITY -------------------
 function normalizeEmbedding(embedding: number[] | Float32Array): number[] {
@@ -9,10 +10,16 @@ function normalizeEmbedding(embedding: number[] | Float32Array): number[] {
   return norm === 0 ? arr : arr.map((val) => val / norm);
 }
 
-interface FaceRow extends RowDataPacket {
-  id: number;
-  user_id: number;
-  face_embedding: string;
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0,
+    normA = 0,
+    normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 // ------------------- HANDLER -------------------
@@ -26,43 +33,55 @@ export default async function handler(
   }
 
   try {
-    const { userId, embedding } = req.body as {
-      userId: number;
+    // Get user ID from temporary token instead of request body
+    const tempAuthToken = req.cookies.tempAuthToken;
+    if (!tempAuthToken) {
+      res.status(401).json({ message: "No temporary token found" });
+      return;
+    }
+
+    // Verify the temporary token
+    const decoded = jwt.verify(tempAuthToken, process.env.JWT_SECRET!) as JwtPayload;
+    if (!decoded || !decoded.temp) {
+      res.status(401).json({ message: "Invalid temporary token" });
+      return;
+    }
+
+    const userId = decoded.id;
+    const { embedding } = req.body as {
       embedding: number[] | Float32Array;
     };
 
-    if (!userId || !embedding) {
-      res.status(400).json({ message: "Missing userId or embedding" });
+    if (!embedding) {
+      res.status(400).json({ message: "Missing embedding" });
       return;
     }
 
-    const normalized = normalizeEmbedding(embedding);
+    // Normalize the embedding
+    const normalizedEmbedding = normalizeEmbedding(embedding);
+    
+    // Convert to JSON string for storage
+    const embeddingJson = JSON.stringify(normalizedEmbedding);
 
-    // Check if user already has a face entry
-    const [existingRows] = await pool.query<FaceRow[]>(
-      "SELECT * FROM user_faces WHERE user_id = ?",
-      [userId]
-    );
+    // Save face embedding to database
+    const { data: faceData, error } = await userFaces.upsert(userId, embeddingJson);
 
-    if (existingRows.length > 0) {
-      // Update existing record
-      await pool.query<ResultSetHeader>(
-        "UPDATE user_faces SET face_embedding = ? WHERE user_id = ?",
-        [JSON.stringify(normalized), userId]
-      );
-      res.status(200).json({ message: "updated" });
+    if (error) {
+      console.error("Error saving face embedding:", error);
+      res.status(500).json({ message: "Failed to register face" });
       return;
     }
 
-    // Insert new record
-    await pool.query<ResultSetHeader>(
-      "INSERT INTO user_faces (user_id, face_embedding) VALUES (?, ?)",
-      [userId, JSON.stringify(normalized)]
-    );
-
-    res.status(200).json({ message: "success" });
-  } catch (err) {
-    console.error("Register face error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(200).json({ message: "Face registered successfully" });
+  } catch (err: unknown) {
+    console.error("Face registration error:", err);
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(500).json({ message });
   }
+}
+
+interface JwtPayload {
+  id: number;
+  temp: boolean;
+  [key: string]: string | number | boolean | object | null | undefined;
 }

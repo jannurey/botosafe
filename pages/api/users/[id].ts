@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface User extends RowDataPacket {
+interface User {
   id: number;
   fullname: string;
   email: string;
@@ -37,14 +36,29 @@ export default async function handler(
   try {
     switch (method) {
       case "GET": {
-        const [rows] = await pool.query<User[]>(
-          `SELECT id, fullname, email, school_id, age, year_level, 
-                  user_status, approval_status, gender, course 
-           FROM users WHERE id = ?`,
-          [id]
-        );
+        const { data: rows, error } = await supabaseAdmin
+          .from('users')
+          .select(`
+            id, 
+            fullname, 
+            email, 
+            school_id, 
+            age, 
+            year_level, 
+            user_status, 
+            approval_status, 
+            gender, 
+            course
+          `)
+          .eq('id', id)
+          .limit(1);
 
-        if (rows.length === 0) {
+        if (error) {
+          console.error("Supabase query error:", error);
+          return res.status(500).json({ error: "Database error" });
+        }
+
+        if (!rows || rows.length === 0) {
           return res.status(404).json({ error: "User not found" });
         }
 
@@ -58,28 +72,49 @@ export default async function handler(
         if (keys.length === 0)
           return res.status(400).json({ error: "No fields provided" });
 
-        const setClause = keys.map((key) => `${key} = ?`).join(", ");
-        const values = Object.values(fields);
+        // Add updated_at field
+        fields.updated_at = new Date().toISOString();
 
-        const [updateResult] = await pool.query<ResultSetHeader>(
-          `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = ?`,
-          [...values, id]
-        );
+        const { data: updateData, error: updateError } = await supabaseAdmin
+          .from('users')
+          .update(fields)
+          .eq('id', id)
+          .select();
 
-        if (updateResult.affectedRows === 0) {
+        if (updateError) {
+          console.error("Supabase update error:", updateError);
+          return res.status(500).json({ error: "Database error" });
+        }
+
+        if (!updateData || updateData.length === 0) {
           return res
             .status(404)
             .json({ error: "User not found or not updated" });
         }
 
-        const [rows] = await pool.query<User[]>(
-          `SELECT id, fullname, email, school_id, age, year_level, 
-                  user_status, approval_status, gender, course 
-           FROM users WHERE id = ?`,
-          [id]
-        );
+        const { data: rows, error: selectError } = await supabaseAdmin
+          .from('users')
+          .select(`
+            id, 
+            fullname, 
+            email, 
+            school_id, 
+            age, 
+            year_level, 
+            user_status, 
+            approval_status, 
+            gender, 
+            course
+          `)
+          .eq('id', id)
+          .limit(1);
 
-        if (rows.length === 0) {
+        if (selectError) {
+          console.error("Supabase query error:", selectError);
+          return res.status(500).json({ error: "Database error" });
+        }
+
+        if (!rows || rows.length === 0) {
           return res.status(404).json({ error: "User not found after update" });
         }
 

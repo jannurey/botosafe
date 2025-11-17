@@ -14,7 +14,7 @@ export function computeMobileRotation(
     const angleRaw =
       (typeof screen !== "undefined" &&
         (screen.orientation?.angle ??
-          (typeof window !== "undefined" ? (window as any).orientation : 0))) ||
+          (typeof window !== "undefined" ? (window as unknown as { orientation: number }).orientation : 0))) ||
       0;
     let angle = Number(angleRaw) || 0;
     angle %= 360;

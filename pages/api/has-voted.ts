@@ -1,13 +1,9 @@
+// pages/api/has-voted.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
+import { votes } from "@/lib/supabaseClient";
 
 interface HasVotedResponse {
   hasVoted: boolean;
-}
-
-interface HasVotedRow extends RowDataPacket {
-  has_voted: number; // MySQL returns TINYINT(1) for booleans
 }
 
 export default async function handler(
@@ -33,20 +29,11 @@ export default async function handler(
   }
 
   try {
-    const [rows] = await pool.query<HasVotedRow[]>(
-      `SELECT COUNT(*) > 0 AS has_voted
-       FROM votes
-       WHERE user_id = ? AND election_id = ?`,
-      [userId, electionId]
-    );
-
-    // MySQL will return 0 or 1, not true/false
-    const hasVoted = rows.length > 0 ? rows[0].has_voted === 1 : false;
+    const hasVoted = await votes.hasVoted(Number(userId), Number(electionId));
 
     return res.status(200).json({ hasVoted });
-  } catch (err: unknown) {
-    console.error("❌ API Error:", err);
-    const message = err instanceof Error ? err.message : "Server error";
-    return res.status(500).json({ error: message });
+  } catch (error) {
+    console.error("Error checking vote status:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }

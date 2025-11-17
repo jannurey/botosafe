@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
 interface ApiResponse {
   message: string;
@@ -21,13 +20,31 @@ export default async function handler(
   }
 
   try {
-    const [result] = await pool.query<ResultSetHeader>(
-      "DELETE FROM users WHERE id = ?",
-      [id]
-    );
+    // First check if user exists
+    const { data: checkData, error: checkError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('id', id)
+      .limit(1);
 
-    if (result.affectedRows === 0) {
+    if (checkError) {
+      console.error("Supabase query error:", checkError);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!checkData || checkData.length === 0) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    // Delete the user
+    const { error: deleteError } = await supabaseAdmin
+      .from('users')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error("Supabase delete error:", deleteError);
+      return res.status(500).json({ message: "Database error" });
     }
 
     return res.status(200).json({ message: "User declined and deleted" });

@@ -1,33 +1,48 @@
-// next.config.mjs
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  images: {
-    unoptimized: true,
-    remotePatterns: [
-      { protocol: "https", hostname: "botosafe.website" },
-      { protocol: "http", hostname: "localhost" },
-    ],
-  },
-
-  webpack: (config) => {
-    // 🧩 Ignore Node built-in modules (face-api.js tries to import them)
+  // Increase memory limit for webpack
+  webpack: (config, { isServer }) => {
+    // Increase memory limit for memory-intensive operations
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+    };
+    
+    // For server-side builds, increase memory limits
+    if (isServer) {
+      config.optimization = {
+        ...config.optimization,
+        minimize: false, // Disable minification for server builds to reduce memory usage
+      };
+    }
+    
+    // Add memory optimizations
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
-      path: false,
-      os: false,
-      crypto: false,
-      encoding: false,
-    };
-
-    config.externals.push({
-      "@mediapipe/face_mesh": "commonjs @mediapipe/face_mesh",
-      "@mediapipe/camera_utils": "commonjs @mediapipe/camera_utils",
-    });
-
-        return config;
-      },
     };
     
-    export default nextConfig;
+    return config;
+  },
+  // Add memory usage optimizations
+  experimental: {
+    // Reduce memory usage during build
+    optimizeCss: true,
+    // Reduce memory usage for large dependencies
+    largePageDataBytes: 256 * 1000, // 256KB
+  },
+  // Configure image optimization to reduce memory usage
+  images: {
+    domains: ['localhost', '127.0.0.1'],
+  },
+  // Environment variables for memory management
+  env: {
+    // TensorFlow.js memory management
+    TFJS_BACKEND: 'webgl',
+    // Limit concurrent requests to reduce memory usage
+    NEXT_CONCURRENCY: '1',
+  },
+};
+
+export default nextConfig;

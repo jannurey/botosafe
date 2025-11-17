@@ -65,7 +65,7 @@ async function tryLoadFromBase(base: string): Promise<FaceMeshCtor> {
     );
   }
   cachedBase = base;
-  console.info(`[mediapipe] using base: ${base}`);
+  // Removed console.info for production security
   return g;
 }
 

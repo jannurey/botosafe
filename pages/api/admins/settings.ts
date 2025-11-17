@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
+import { supabaseAdmin } from "@/configs/supabase";
 import { parse } from "cookie";
 import jwt from "jsonwebtoken";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
 
@@ -12,13 +11,15 @@ async function requireAdmin(req: NextApiRequest) {
   const cookies = parse(req.headers.cookie || "");
   const token = cookies.authToken;
   if (!token) throw new Error("Unauthorized");
-  let payload: any;
+  let payload: jwt.JwtPayload | string;
   try {
     payload = jwt.verify(token, JWT_SECRET);
   } catch (err) {
     throw new Error("Invalid token");
   }
-  if (payload.role !== "admin") {
+  
+  // Check if payload is not a string and has role property
+  if (typeof payload === 'string' || payload.role !== "admin") {
     throw new Error("Forbidden");
   }
   return payload;
@@ -49,19 +50,25 @@ export default async function handler(
 ) {
   try {
     // All routes require admin auth
-    let actor: any;
+    let actor: jwt.JwtPayload | string | null = null;
     try {
       actor = await requireAdmin(req);
-    } catch (err: any) {
-      const code = err.message === "Forbidden" ? 403 : 401;
-      return res.status(code).json({ message: err.message });
+    } catch (err: unknown) {
+      const code = (err as Error).message === "Forbidden" ? 403 : 401;
+      return res.status(code).json({ message: (err as Error).message });
     }
 
     if (req.method === "GET") {
       // fetch all settings
-      const [rows] = await pool.query<RowDataPacket[]>(
-        "SELECT k, v FROM settings"
-      );
+      const { data: rows, error } = await supabaseAdmin
+        .from('settings')
+        .select('k, v');
+
+      if (error) {
+        console.error("Supabase query error:", error);
+        return res.status(500).json({ message: "Database error" });
+      }
+
       const out: SettingsMap = {};
       for (const r of rows) {
         try {
@@ -83,10 +90,10 @@ export default async function handler(
       if (Object.prototype.hasOwnProperty.call(body, "default_school_year")) {
         try {
           validateDefaultSchoolYear(body["default_school_year"]);
-        } catch (err: any) {
+        } catch (err: unknown) {
           return res
             .status(400)
-            .json({ message: err?.message ?? "Invalid default_school_year" });
+            .json({ message: (err as Error)?.message ?? "Invalid default_school_year" });
         }
       }
 
@@ -96,21 +103,29 @@ export default async function handler(
         return res.status(400).json({ message: "No settings provided" });
       }
 
-      // Use transaction for safety
-      await pool.query("START TRANSACTION");
+      // Use transaction-like approach with Supabase
       try {
         for (const k of keys) {
           const v = JSON.stringify(body[k] ?? null);
-          await pool.query<ResultSetHeader>(
-            `INSERT INTO settings (\`k\`, \`v\`, updated_by, updated_at)
-             VALUES (?, ?, ?, NOW())
-             ON DUPLICATE KEY UPDATE \`v\` = VALUES(\`v\`), updated_by = VALUES(updated_by), updated_at = NOW()`,
-            [k, v, actor?.id ?? null]
-          );
+          
+          // Use upsert to handle both insert and update
+          const { error: upsertError } = await supabaseAdmin
+            .from('settings')
+            .upsert({
+              k: k,
+              v: v,
+              updated_by: actor?.id ?? null,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'k'
+            });
+              
+          if (upsertError) {
+            throw upsertError;
+          }
         }
-        await pool.query("COMMIT");
       } catch (err) {
-        await pool.query("ROLLBACK");
+        console.error("Settings update error:", err);
         throw err;
       }
 
@@ -120,7 +135,6 @@ export default async function handler(
     res.setHeader("Allow", ["GET", "PUT", "POST"]);
     return res.status(405).json({ message: "Method Not Allowed" });
   } catch (err: unknown) {
-    // eslint-disable-next-line no-console
     console.error("api/admin/settings error:", err);
     const message =
       err instanceof Error ? err.message : "Internal Server Error";

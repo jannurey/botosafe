@@ -4,6 +4,14 @@ import * as jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
 
+interface JwtPayload {
+  id: number;
+  role?: string;
+  preAuth?: boolean;
+  otpVerified?: boolean;
+  [key: string]: string | number | boolean | object | null | undefined;
+}
+
 /**
  * Read and validate preAuth JWT from cookies.
  * Returns { id, role, otpVerified } or null.
@@ -19,7 +27,7 @@ export function getPreAuthFromRequest(
     const payload = jwt.verify(
       token,
       JWT_SECRET as unknown as jwt.Secret
-    ) as any;
+    ) as JwtPayload;
     if (payload && payload.preAuth && payload.id) {
       return {
         id: Number(payload.id),

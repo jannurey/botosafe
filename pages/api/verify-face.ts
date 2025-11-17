@@ -1,10 +1,27 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
+import { supabaseAdmin } from "@/configs/supabase";
 import jwt from "jsonwebtoken";
-import { serialize } from "cookie";
-import { RowDataPacket } from "mysql2";
+import * as faceapi from "@vladmandic/face-api";
+
+interface FaceRow {
+  id: number;
+  user_id: number;
+  face_embedding: string;
+}
+
+interface UserRow {
+  id: number;
+  fullname: string;
+  email: string;
+  role: string;
+}
 
 // ------------------- UTILITY -------------------
+function normalizeEmbedding(embedding: number[]): number[] {
+  const norm = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+  return embedding.map((val) => val / (norm || 1));
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0,
     normA = 0,
@@ -23,24 +40,7 @@ function toNumberArray(input: unknown): number[] {
   throw new Error("Invalid embedding format");
 }
 
-function normalizeEmbedding(embedding: number[]): number[] {
-  const norm = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-  return embedding.map((val) => val / (norm || 1));
-}
-
-const THRESHOLD = 0.9;
-
-interface FaceRow extends RowDataPacket {
-  user_id: number;
-  face_embedding: string;
-}
-
-interface UserRow extends RowDataPacket {
-  id: number;
-  fullname: string;
-  email: string;
-  role: string;
-}
+const THRESHOLD = 0.85;
 
 // ------------------- HANDLER -------------------
 export default async function handler(
@@ -63,12 +63,17 @@ export default async function handler(
     const embeddingArray = toNumberArray(embedding);
     const normalized = normalizeEmbedding(embeddingArray);
 
-    const [faceRows] = await pool.query<FaceRow[]>(
-      "SELECT user_id, face_embedding FROM user_faces WHERE user_id = ?",
-      [userId]
-    );
+    const { data: faceRows, error: faceError } = await supabaseAdmin
+      .from('user_faces')
+      .select('user_id, face_embedding')
+      .eq('user_id', userId);
 
-    if (faceRows.length === 0) {
+    if (faceError) {
+      console.error("Supabase query error:", faceError);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!faceRows || faceRows.length === 0) {
       return res
         .status(200)
         .json({ match: false, message: "No face registered" });
@@ -79,19 +84,32 @@ export default async function handler(
     );
     const normalizedStored = normalizeEmbedding(storedEmbedding);
     const sim = cosineSimilarity(normalized, normalizedStored);
+    
+    // Log the similarity score for debugging
+    console.log(`Face verification for user ${userId}: similarity = ${sim.toFixed(4)}, threshold = ${THRESHOLD}`);
 
     if (sim < THRESHOLD) {
       return res
         .status(200)
-        .json({ match: false, message: "Face not recognized" });
+        .json({ 
+          match: false, 
+          message: "Face not recognized",
+          bestScore: sim,
+          threshold: THRESHOLD
+        });
     }
 
-    const [userRows] = await pool.query<UserRow[]>(
-      "SELECT id, fullname, email, role FROM users WHERE id = ?",
-      [userId]
-    );
+    const { data: userRows, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, fullname, email, role')
+      .eq('id', userId);
 
-    if (userRows.length === 0)
+    if (userError) {
+      console.error("Supabase query error:", userError);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!userRows || userRows.length === 0)
       return res.status(404).json({ message: "User not found" });
     const user = userRows[0];
 
@@ -107,6 +125,8 @@ export default async function handler(
         user,
         voteToken,
         message: "Face verified for voting.",
+        bestScore: sim,
+        threshold: THRESHOLD
       });
     } else {
       // 🔐 Issue regular login token
@@ -116,20 +136,29 @@ export default async function handler(
         { expiresIn: "1h" }
       );
 
-      res.setHeader(
-        "Set-Cookie",
-        serialize("authToken", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
-          path: "/",
-          maxAge: 60 * 60,
-        })
-      );
+      // Determine if we're in a secure context (HTTPS)
+      const isSecure = req.headers['x-forwarded-proto'] === 'https' || 
+                      (req.socket as any).encrypted || 
+                      process.env.NODE_ENV === 'production';
+      
+      const cookieHeader = [
+        `authToken=${token}; Path=/; HttpOnly; SameSite=Lax${isSecure ? '; Secure' : ''}; Max-Age=${60 * 60}`,
+      ];
+      
+      // Also set a non-HttpOnly cookie for client-side access if needed
+      // But for security, we'll rely on the temporary auth token approach
+      
+      res.setHeader("Set-Cookie", cookieHeader);
 
       return res
         .status(200)
-        .json({ match: true, user, message: "Face verified. User logged in." });
+        .json({ 
+          match: true, 
+          user, 
+          message: "Face verified. User logged in.",
+          bestScore: sim,
+          threshold: THRESHOLD
+        });
     }
   } catch (err) {
     console.error("❌ Face verify error:", err);

@@ -1,12 +1,24 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface ResultRow extends RowDataPacket {
+interface ResultRow {
   position_id: number;
   position_name: string;
   candidate_name: string;
   vote_count: number;
+}
+
+interface PositionRow {
+  id: number;
+  name: string;
+  candidates?: Array<{
+    user?: Array<{
+      fullname: string;
+    }> | null;
+    votes?: Array<{
+      id: number;
+    }> | null;
+  }> | null;
 }
 
 export default async function handler(
@@ -19,30 +31,78 @@ export default async function handler(
   }
 
   try {
-    const [rows] = await pool.query<ResultRow[]>(
-      `
-      SELECT 
-        p.id AS position_id,
-        p.name AS position_name,
-        u.fullname AS candidate_name,
-        COUNT(v.id) AS vote_count
-      FROM positions p
-      JOIN candidates c ON c.position_id = p.id
-      JOIN users u ON u.id = c.user_id
-      LEFT JOIN votes v ON v.candidate_id = c.id
-      WHERE c.election_id = (
-        SELECT e.id
-        FROM elections e
-        WHERE e.status IN ('ongoing', 'closed')
-        ORDER BY e.end_time DESC
-        LIMIT 1
-      )
-      GROUP BY p.id, p.name, u.fullname
-      ORDER BY p.id, vote_count DESC
-      `
-    );
+    // First get the latest election that is ongoing or closed
+    const { data: electionData, error: electionError } = await supabaseAdmin
+      .from('elections')
+      .select('id')
+      .in('status', ['ongoing', 'closed'])
+      .order('end_time', { ascending: false })
+      .limit(1);
 
-    res.status(200).json(rows);
+    if (electionError) {
+      console.error("Supabase election query error:", electionError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // If no election exists, return empty array
+    if (!electionData || electionData.length === 0 || !electionData[0].id) {
+      return res.status(404).json({ error: "No election found" });
+    }
+
+    const electionId = electionData[0].id;
+
+    // Get results for the latest election
+    const { data: rows, error: resultsError } = await supabaseAdmin
+      .from('positions')
+      .select(`
+        id,
+        name,
+        candidates (
+          user:users (
+            fullname
+          ),
+          votes (
+            id
+          )
+        )
+      `)
+      .eq('election_id', electionId);
+
+    if (resultsError) {
+      console.error("Supabase results query error:", resultsError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Transform the data to match the expected structure
+    const results: ResultRow[] = [];
+    rows.forEach((position: PositionRow) => {
+      if (position.candidates && Array.isArray(position.candidates)) {
+        position.candidates.forEach((candidate) => {
+          // Skip candidates with null user data
+          if (!candidate.user || !Array.isArray(candidate.user) || candidate.user.length === 0) {
+            return;
+          }
+          
+          const voteCount = candidate.votes ? candidate.votes.length : 0;
+          results.push({
+            position_id: position.id,
+            position_name: position.name,
+            candidate_name: candidate.user[0].fullname || '',
+            vote_count: voteCount
+          });
+        });
+      }
+    });
+
+    // Sort results by position_id and vote_count (descending)
+    results.sort((a, b) => {
+      if (a.position_id !== b.position_id) {
+        return a.position_id - b.position_id;
+      }
+      return b.vote_count - a.vote_count;
+    });
+
+    res.status(200).json(results);
   } catch (error) {
     console.error("❌ Error fetching results:", error);
     res.status(500).json({ error: (error as Error).message });

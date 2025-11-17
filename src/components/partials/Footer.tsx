@@ -1,56 +1,106 @@
 import React from "react";
+import Link from "next/link";
 
 const Footer: React.FC = () => {
   return (
-    <footer
-      className="py-8 px-6 shadow-inner overflow-hidden"
-      style={{
-        background: "linear-gradient(90deg, #3A86FF 0%, #5F6CAF 100%)",
-        color: "white",
-      }}
-    >
-      {/* Decorative curved top edge */}
-      <div className="absolute left-0 right-0 top-0 w-full h-8 pointer-events-none z-20">
-        <svg
-          viewBox="0 0 100 10"
-          preserveAspectRatio="none"
-          className="w-full h-full"
-        >
-          <path
-            d="M0,10 Q50,-10 100,10 L100,0 L0,0 Z"
-            fill="url(#footerGradient)"
-          />
-          <defs>
-            <linearGradient
-              id="footerGradient"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="0%"
-            >
-              <stop offset="0%" stopColor="#3A86FF" />
-              <stop offset="100%" stopColor="#5F6CAF" />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-      <div className="max-w-6xl mx-auto flex flex-col items-center text-center gap-2">
-        {/* Logo/Brand */}
-        <div className="flex items-center gap-2 mb-2">
-          <h2 className="text-2xl font-black tracking-tight text-white">
-            BOTOSAFE
-          </h2>
+    <footer className="bg-gray-100 border-t border-gray-200 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          {/* Brand Column */}
+          <div className="col-span-1 md:col-span-2">
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-xl font-bold text-[#791010]">BOTOSAFE</h2>
+            </div>
+            <p className="text-gray-600 text-sm mb-4">
+              Your secure student voting platform - smart, safe, and stress-free.
+            </p>
+            <p className="text-gray-500 text-xs">
+              &copy; {new Date().getFullYear()} BOTOSAFE. All rights reserved.
+            </p>
+          </div>
+
+          {/* Quick Links Column */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-wider mb-4">
+              Quick Links
+            </h3>
+            <ul className="space-y-2">
+              <li>
+                <Link 
+                  href="/" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Home
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="/pages/candidates" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Candidates
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="/pages/dashboard" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="/signin/login" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Sign In
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Support Column */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-wider mb-4">
+              Support
+            </h3>
+            <ul className="space-y-2">
+              <li>
+                <Link 
+                  href="#" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Help Center
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="#" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Contact Us
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="#" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="#" 
+                  className="text-gray-600 hover:text-[#791010] text-sm transition-colors"
+                >
+                  Terms of Service
+                </Link>
+              </li>
+            </ul>
+          </div>
         </div>
-
-        {/* Tagline */}
-        <p className="text-base italic font-medium text-white">
-          &quot;Safe na safe boto mo&quot;
-        </p>
-
-        {/* Copyright */}
-        <p className="text-sm text-white mt-2">
-          &copy; 2025 BOTOSAFE. All rights reserved.
-        </p>
       </div>
     </footer>
   );

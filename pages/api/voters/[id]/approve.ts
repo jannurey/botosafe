@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
 interface ApiResponse {
   message: string;
@@ -21,12 +20,18 @@ export default async function handler(
   }
 
   try {
-    const [result] = await pool.query<ResultSetHeader>(
-      "UPDATE users SET is_verified = TRUE WHERE id = ?",
-      [id]
-    );
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update({ is_verified: true })
+      .eq('id', id)
+      .select();
 
-    if (result.affectedRows === 0) {
+    if (error) {
+      console.error("Supabase update error:", error);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!data || data.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 

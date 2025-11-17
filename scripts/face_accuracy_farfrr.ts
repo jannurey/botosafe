@@ -1,11 +1,10 @@
 import "dotenv/config";
-import mysql from "mysql2/promise";
-import type { RowDataPacket } from "mysql2";
+import { createClient } from "@supabase/supabase-js";
 
 type Vec = number[];
 
-// Rows returned by MySQL must extend RowDataPacket for mysql2 typings
-interface FaceRow extends RowDataPacket {
+// Rows returned by Supabase
+interface FaceRow {
   user_id: number;
   face_embedding: string;
 }
@@ -36,32 +35,27 @@ function cosine(a: Vec, b: Vec): number {
 
 async function main() {
   const {
-    DB_HOST,
-    DB_PORT,
-    DB_USER,
-    DB_PASSWORD,
-    DB_NAME,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
     THRESHOLD = "0.75",
     IMPOSTOR_SAMPLES_PER_USER = "50",
   } = process.env as Record<string, string>;
 
-  if (!DB_HOST || !DB_USER || !DB_NAME) {
-    throw new Error("Missing DB env (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)");
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing Supabase env (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)");
   }
 
-  const conn = await mysql.createConnection({
-    host: DB_HOST,
-    port: DB_PORT ? Number(DB_PORT) : 3306,
-    user: DB_USER,
-    password: DB_PASSWORD,
-    database: DB_NAME,
-  });
+  // Create Supabase client
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Use a generic that extends RowDataPacket
-  const [rows] = await conn.query<FaceRow[]>(
-    "SELECT user_id, face_embedding FROM user_faces"
-  );
-  await conn.end();
+  // Fetch face embeddings from Supabase
+  const { data: rows, error } = await supabase
+    .from('user_faces')
+    .select('user_id, face_embedding');
+
+  if (error) {
+    throw new Error(`Supabase query error: ${error.message}`);
+  }
 
   // Parse embeddings: row JSON can be single vector or array of vectors
   const perUser: Map<number, Vec[]> = new Map();

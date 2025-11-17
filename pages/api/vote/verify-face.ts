@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
+import { supabaseAdmin } from "@/configs/supabase";
 import jwt from "jsonwebtoken";
-import { serialize } from "cookie";
-import { RowDataPacket } from "mysql2";
+import * as faceapi from "@vladmandic/face-api";
 import { logFaceVerificationEvent } from "@/lib/faceEvents";
 
 /**
@@ -10,12 +9,12 @@ import { logFaceVerificationEvent } from "@/lib/faceEvents";
  */
 
 /* ---------- Types ---------- */
-interface FaceRow extends RowDataPacket {
+interface FaceRow {
   user_id: number;
   face_embedding: string; // JSON string stored in DB
 }
 
-interface UserRow extends RowDataPacket {
+interface UserRow {
   id: number;
   fullname: string;
   email: string;
@@ -64,7 +63,7 @@ function median(values: number[]): number {
 }
 
 /* ---------- Config ---------- */
-const THRESHOLD_MATCH = 0.6;
+const THRESHOLD_MATCH = 0.85;
 
 /* ---------- Handler ---------- */
 export default async function handler(
@@ -118,10 +117,15 @@ export default async function handler(
         .json({ message: "No valid embedding samples provided" });
     }
 
-    const [faceRows] = await pool.query<FaceRow[]>(
-      "SELECT user_id, face_embedding FROM user_faces WHERE user_id = ?",
-      [userId]
-    );
+    const { data: faceRows, error: faceError } = await supabaseAdmin
+      .from('user_faces')
+      .select('user_id, face_embedding')
+      .eq('user_id', userId);
+
+    if (faceError) {
+      console.error("Supabase query error:", faceError);
+      return res.status(500).json({ message: "Database error" });
+    }
 
     if (!faceRows || faceRows.length === 0) {
       return res
@@ -206,10 +210,15 @@ export default async function handler(
       });
     }
 
-    const [userRows] = await pool.query<UserRow[]>(
-      "SELECT id, fullname, email, role FROM users WHERE id = ?",
-      [userId]
-    );
+    const { data: userRows, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, fullname, email, role')
+      .eq('id', userId);
+
+    if (userError) {
+      console.error("Supabase query error:", userError);
+      return res.status(500).json({ message: "Database error" });
+    }
 
     if (!userRows || userRows.length === 0) {
       return res.status(404).json({ message: "User not found" });
@@ -239,16 +248,16 @@ export default async function handler(
       { expiresIn: "1h" }
     );
 
-    res.setHeader(
-      "Set-Cookie",
-      serialize("authToken", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        path: "/",
-        maxAge: 60 * 60,
-      })
-    );
+    // Determine if we're in a secure context (HTTPS)
+    const isSecure = req.headers['x-forwarded-proto'] === 'https' || 
+                    (req.socket as any).encrypted || 
+                    process.env.NODE_ENV === 'production';
+
+    const cookieHeader = [
+      `authToken=${token}; Path=/; HttpOnly; SameSite=Lax${isSecure ? '; Secure' : ''}; Max-Age=${60 * 60}`,
+    ];
+    
+    res.setHeader("Set-Cookie", cookieHeader);
 
     return res.status(200).json({
       match: true,

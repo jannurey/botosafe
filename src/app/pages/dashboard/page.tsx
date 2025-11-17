@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Header from "@/components/partials/Header";
+import Footer from "@/components/partials/Footer";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -14,6 +15,7 @@ import {
 import { Bar } from "react-chartjs-2";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 ChartJS.register(
   CategoryScale,
@@ -43,11 +45,99 @@ type ResultsAPIResponse = {
   results: Result[];
 };
 
+type User = {
+  id: number;
+  fullname: string;
+};
+
 export default function DashboardPage(): React.ReactElement {
   const [results, setResults] = useState<Result[]>([]);
   const [election, setElection] = useState<Election | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [user, setUser] = useState<User | null>(null);
+  const router = useRouter();
+
+  // Check authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // Check for temporary auth token first
+        const tempAuthToken = localStorage.getItem("tempAuthToken");
+        if (tempAuthToken) {
+          try {
+            // Decode the temporary token
+            const decodedTempToken = JSON.parse(atob(tempAuthToken));
+            const userId = decodedTempToken.userId;
+            const exp = decodedTempToken.exp;
+            
+            // Check if token is still valid
+            if (Date.now() < exp && userId) {
+              // Use temporary authentication
+              const res = await fetch("/api/users/me", {
+                method: "GET",
+                credentials: "include",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-temp-login": "true",
+                  "x-user-id": userId.toString(),
+                },
+              });
+
+              if (!res.ok) {
+                // Clear invalid temp token
+                localStorage.removeItem("tempAuthToken");
+                router.push("/signin/login?returnTo=/pages/dashboard");
+                return;
+              }
+
+              const data: { user: User } = await res.json();
+              if (!data || !data.user) {
+                // Clear invalid temp token
+                localStorage.removeItem("tempAuthToken");
+                router.push("/signin/login?returnTo=/pages/dashboard");
+                return;
+              }
+              setUser(data.user);
+              return;
+            } else {
+              // Token expired, clear it
+              localStorage.removeItem("tempAuthToken");
+            }
+          } catch (decodeError) {
+            // Invalid token format, clear it
+            localStorage.removeItem("tempAuthToken");
+          }
+        }
+        
+        // For regular authentication, we don't check the cookie directly since it's HttpOnly
+        // Instead, we just try to fetch the user data
+        const res = await fetch("/api/users/me", {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!res.ok) {
+          router.push("/signin/login?returnTo=/pages/dashboard");
+          return;
+        }
+
+        const data: { user: User } = await res.json();
+        if (!data || !data.user) {
+          router.push("/signin/login?returnTo=/pages/dashboard");
+          return;
+        }
+        setUser(data.user);
+      } catch (err) {
+        router.push("/signin/login?returnTo=/pages/dashboard");
+      }
+    };
+
+    checkAuth();
+  }, [router]);
 
   const fetchResults = async (): Promise<void> => {
     try {
@@ -66,12 +156,15 @@ export default function DashboardPage(): React.ReactElement {
   };
 
   useEffect(() => {
-    fetchResults();
-    const interval = setInterval(() => {
-      if (election?.status === "ongoing") fetchResults();
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [election?.status]);
+    // Only fetch results if user is authenticated
+    if (user) {
+      fetchResults();
+      const interval = setInterval(() => {
+        if (election?.status === "ongoing") fetchResults();
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [election?.status, user]);
 
   const grouped: Record<string, Result[]> = results.reduce(
     (acc: Record<string, Result[]>, row) => {
@@ -92,11 +185,26 @@ export default function DashboardPage(): React.ReactElement {
     setCurrentIndex((prev) => (prev === 0 ? positions.length - 1 : prev - 1));
   };
 
+  // Show loading while checking auth
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-purple-100">
+        <div className="text-center p-8 bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg max-w-md w-full mx-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#791010] mx-auto mb-4"></div>
+          <p className="text-gray-700 font-medium">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <p className="text-center mt-8 animate-pulse text-gray-600">
-        Loading live results...
-      </p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-purple-100">
+        <div className="text-center p-8 bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg max-w-md w-full mx-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#791010] mx-auto mb-4"></div>
+          <p className="text-gray-700 font-medium">Loading live results...</p>
+        </div>
+      </div>
     );
   }
 
@@ -236,6 +344,7 @@ export default function DashboardPage(): React.ReactElement {
           )}
         </div>
       </div>
+      <Footer />
     </>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-backend-webgl";
 import type * as FaceAPI from "@vladmandic/face-api";
+import FaceModelManager from "@/lib/face-models/FaceModelManager";
 
 type ProgressState = { blink: boolean; mouth: boolean; head: boolean };
 type StepType = "blink" | "mouth" | "head" | "done";
@@ -52,7 +53,8 @@ export default function FaceScanVotePage() {
   useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    import("@vladmandic/face-api").then((mod) => setFaceapi(mod));
+    // Use the global model manager instead of loading face-api directly
+    FaceModelManager.loadFaceApi().then((api) => setFaceapi(api));
   }, []);
 
   // --- EAR & MAR calculations ---
@@ -91,13 +93,24 @@ export default function FaceScanVotePage() {
             if (!detection) throw new Error("no_face");
 
             const embedding = Array.from(detection.descriptor);
-            const userIdStr = localStorage.getItem("userId");
-            if (!userIdStr) throw new Error("session_expired");
+            
+            // Get userId from authenticated session instead of localStorage
+            const userRes = await fetch("/api/users/me", {
+              method: "GET",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            });
+            
+            if (!userRes.ok) throw new Error("session_expired");
+            const userData = await userRes.json();
+            const userId = userData.user.id;
 
             const res = await fetch("/api/verify-face", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId: Number(userIdStr), embedding }),
+              body: JSON.stringify({ userId: userId, embedding }),
             });
 
             const data: { match?: boolean; message?: string } =
@@ -113,7 +126,7 @@ export default function FaceScanVotePage() {
             const tokenRes = await fetch("/api/generate-vote-token", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId: payload.userId, electionId }),
+              body: JSON.stringify({ userId: userId, electionId }), // Use authenticated userId
             });
 
             const { voteToken } = await tokenRes.json();
@@ -159,40 +172,33 @@ export default function FaceScanVotePage() {
   const stopCamera = (): void => {
     const video = videoRef.current;
     if (video && video.srcObject) {
-      (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      const stream = video.srcObject as MediaStream;
+      stream.getTracks().forEach((t) => {
+        t.stop();
+      });
       video.srcObject = null;
     }
   };
 
   // --- Reset check ---
   const resetCheck = (): void => {
-    stopCamera();
     setLivenessDone(false);
     setStep("blink");
     setProgress({ blink: false, mouth: false, head: false });
+    // Don't stop camera immediately on reset to avoid AbortError
+    // Camera will be stopped when component unmounts or when needed
   };
 
   // --- Load Models ---
   useEffect(() => {
-    if (!faceapi) return;
+    // Use the global model manager to check if models are already loaded
+    if (!faceapi || modelsLoaded || FaceModelManager.areModelsLoaded()) return;
     const loadModels = async (): Promise<void> => {
       try {
         setStatus("⚙️ Initializing TensorFlow...");
-        await tf.ready();
-        try {
-          await tf.setBackend("webgl");
-        } catch {
-          await tf.setBackend("cpu");
-        }
-
-        setStatus("📦 Loading face-api models...");
-        const MODEL_URL = "/models";
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
-
+        // Use the global model manager to load models
+        await FaceModelManager.loadModels();
+        
         setModelsLoaded(true);
         setStatus("✅ Models loaded. Starting camera...");
       } catch (err) {
@@ -201,7 +207,7 @@ export default function FaceScanVotePage() {
       }
     };
     loadModels();
-  }, [faceapi]);
+  }, [faceapi, modelsLoaded]);
 
   // --- Camera & Detection ---
   useEffect(() => {
@@ -210,6 +216,8 @@ export default function FaceScanVotePage() {
     let stream: MediaStream | null = null;
     let animationId = 0;
     let detectionRunning = true;
+    let lastDetectionTime = 0; // Timestamp of last detection
+    const DETECTION_INTERVAL = 100; // Minimum interval between detections (ms)
 
     const startCamera = async (): Promise<void> => {
       const video = videoRef.current;
@@ -225,8 +233,16 @@ export default function FaceScanVotePage() {
           audio: false,
         });
         video.srcObject = stream;
-        await video.play();
-        setStatus("📸 Camera ready...");
+        
+        // Handle the play() promise properly to avoid AbortError
+        try {
+          await video.play();
+          setStatus("📸 Camera ready...");
+        } catch (playError) {
+          console.error("Video play error:", playError);
+          // Don't set status to failed, just continue as the video might work on next frame
+          setStatus("📸 Camera ready...");
+        }
       } catch (err) {
         console.error(err);
         setStatus("❌ Camera access failed");
@@ -235,6 +251,14 @@ export default function FaceScanVotePage() {
 
       const detectLoop = async (): Promise<void> => {
         if (!detectionRunning || !video || !faceapi) return;
+
+        // Throttle detection to prevent excessive processing
+        const now = Date.now();
+        if (now - lastDetectionTime < DETECTION_INTERVAL) {
+          animationId = requestAnimationFrame(detectLoop);
+          return;
+        }
+        lastDetectionTime = now;
 
         try {
           const detection = await faceapi
@@ -276,13 +300,22 @@ export default function FaceScanVotePage() {
                 setLivenessDone(true);
                 detectionRunning = false;
                 cancelAnimationFrame(animationId);
-                await verifyAndSubmitVote(video);
+                try {
+                  await verifyAndSubmitVote(video);
+                } catch (error) {
+                  console.error("Error during vote submission:", error);
+                  setStatus("⚠️ Verification failed. Try again.");
+                  setTimeout(() => resetCheck(), 2000);
+                }
                 return;
               }
             }
           }
         } catch (error) {
-          console.error("Detection error:", error);
+          // Only log the error if it's not an AbortError (which is expected during cleanup)
+          if (error instanceof Error && error.name !== 'AbortError') {
+            console.error("Detection error:", error);
+          }
         }
 
         animationId = requestAnimationFrame(detectLoop);

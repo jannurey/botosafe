@@ -163,8 +163,8 @@ export default function EditProfilePage() {
       if (!res.ok) throw new Error(data?.message || "Failed to save");
       setMessage("Profile updated");
       setTimeout(() => router.push("/admin/profile"), 700);
-    } catch (err: any) {
-      setMessage(err?.message || "Failed to update");
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Failed to update");
     } finally {
       setSaving(false);
     }
@@ -291,7 +291,7 @@ export default function EditProfilePage() {
               </span>
               <select
                 name="year_level"
-                value={yearLevel as any}
+                value={yearLevel}
                 onChange={(e) => setYearLevel(e.target.value)}
                 className="w-full pl-10 border px-3 py-2 rounded"
               >

@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pool } from "@/configs/database";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { supabaseAdmin } from "@/configs/supabase";
 
-interface Election extends RowDataPacket {
+interface Election {
   id: number;
   title: string;
   status: "upcoming" | "filing" | "ongoing" | "closed";
@@ -40,11 +39,17 @@ export default async function handler(
   }
 
   try {
-    const [rows] = await pool.query<Election[]>(
-      "SELECT * FROM elections ORDER BY start_time DESC"
-    );
+    const { data: rows, error } = await supabaseAdmin
+      .from('elections')
+      .select('*')
+      .order('start_time', { ascending: false });
 
-    if (rows.length === 0) {
+    if (error) {
+      console.error("Supabase query error:", error);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ message: "No elections found" });
     }
 
@@ -52,11 +57,16 @@ export default async function handler(
     for (const row of rows) {
       const newStatus = computeStatus(row);
       if (newStatus !== row.status) {
-        await pool.query<ResultSetHeader>(
-          "UPDATE elections SET status = ? WHERE id = ?",
-          [newStatus, row.id]
-        );
-        row.status = newStatus;
+        const { error: updateError } = await supabaseAdmin
+          .from('elections')
+          .update({ status: newStatus })
+          .eq('id', row.id);
+
+        if (updateError) {
+          console.error("Supabase update error:", updateError);
+        } else {
+          row.status = newStatus;
+        }
       }
     }
 
