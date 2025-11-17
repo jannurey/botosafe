@@ -480,13 +480,30 @@ export default function AdminCandidatesPage() {
                 <div className="bg-white rounded-xl p-5 flex flex-col items-center shadow-sm border border-gray-200/50">
                   <div className="relative mb-4">
                     <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
-                      <Image
-                        src={viewCandidate.photo_url}
-                        alt={viewCandidate.fullname}
-                        width={128}
-                        height={128}
-                        className="object-cover w-full h-full"
-                      />
+                      {viewCandidate.photo_url ? (
+                        viewCandidate.photo_url.startsWith('/uploads/') ? (
+                          // Local uploaded image - use img tag
+                          <img
+                            src={viewCandidate.photo_url}
+                            alt={viewCandidate.fullname}
+                            className="object-cover w-full h-full"
+                          />
+                        ) : (
+                          // Cloudinary or external image - use Next.js Image
+                          <Image
+                            src={viewCandidate.photo_url}
+                            alt={viewCandidate.fullname}
+                            width={128}
+                            height={128}
+                            className="object-cover w-full h-full"
+                            unoptimized={false}
+                          />
+                        )
+                      ) : (
+                        <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500">
+                          No Photo
+                        </div>
+                      )}
                     </div>
                   </div>
                   <h3 className="text-xl font-bold text-gray-800 text-center mb-1">

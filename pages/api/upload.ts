@@ -8,6 +8,9 @@ import { v2 as cloudinary } from "cloudinary";
 export const config = {
   api: {
     bodyParser: false,
+    responseLimit: false,
+    // Increase size limit for file uploads (10MB)
+    sizeLimit: '10mb',
   },
 };
 
@@ -50,12 +53,21 @@ export default async function handler(
     return;
   }
 
-  const form = formidable({ multiples: false });
+  const form = formidable({ 
+    multiples: false,
+    maxFileSize: 10 * 1024 * 1024, // 10MB max file size
+    keepExtensions: true,
+  });
 
   form.parse(req, async (err, _fields, files) => {
     if (err) {
       console.error("❌ Form parse error:", err);
-      res.status(500).json({ error: "Failed to parse upload" });
+      // Provide more specific error message
+      if (err.message?.includes('maxFileSize')) {
+        res.status(413).json({ error: "File too large. Maximum size is 10MB" });
+      } else {
+        res.status(500).json({ error: `Failed to parse upload: ${err.message}` });
+      }
       return;
     }
 
@@ -70,14 +82,26 @@ export default async function handler(
       // If Cloudinary is configured, use it
       if (hasCloudinaryConfig) {
         const filePath = uploadedFile.filepath;
+        
+        console.log("📤 Uploading to Cloudinary:", {
+          fileName: uploadedFile.originalFilename,
+          fileSize: uploadedFile.size,
+        });
+        
         const result = await cloudinary.uploader.upload(filePath, {
           folder: "botosafe/candidates",
           resource_type: "auto",
+          timeout: 60000, // 60 second timeout
         });
 
         // Delete temporary file
-        fs.unlinkSync(filePath);
+        try {
+          fs.unlinkSync(filePath);
+        } catch (unlinkErr) {
+          console.warn("⚠️ Failed to delete temp file:", unlinkErr);
+        }
 
+        console.log("✅ Upload successful:", result.secure_url);
         res.status(200).json({ url: result.secure_url });
       } else {
         // If Cloudinary is not configured, save locally
@@ -102,7 +126,8 @@ export default async function handler(
       }
     } catch (uploadErr) {
       console.error("❌ Upload error:", uploadErr);
-      res.status(500).json({ error: "Upload failed" });
+      const errorMessage = uploadErr instanceof Error ? uploadErr.message : "Upload failed";
+      res.status(500).json({ error: `Upload failed: ${errorMessage}` });
     }
   });
 }

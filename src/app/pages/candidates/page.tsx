@@ -307,7 +307,10 @@ export default function CandidatesPage() {
         method: "POST",
         body: photoForm,
       });
-      if (!photoRes.ok) throw new Error("Photo upload failed");
+      if (!photoRes.ok) {
+        const errorData = await photoRes.json();
+        throw new Error(errorData.error || "Photo upload failed");
+      }
       const photoData = await photoRes.json();
 
       const cocForm = new FormData();
@@ -316,7 +319,10 @@ export default function CandidatesPage() {
         method: "POST",
         body: cocForm,
       });
-      if (!cocRes.ok) throw new Error("CoC upload failed");
+      if (!cocRes.ok) {
+        const errorData = await cocRes.json();
+        throw new Error(errorData.error || "CoC upload failed");
+      }
       const cocData = await cocRes.json();
 
       // Determine the partylist value
@@ -378,7 +384,8 @@ export default function CandidatesPage() {
             }
           });
       } else {
-        setFormError("Failed to file candidacy.");
+        const errorData = await res.json();
+        setFormError(errorData.error || "Failed to file candidacy.");
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -386,6 +393,8 @@ export default function CandidatesPage() {
       } else {
         setFormError("An unknown error occurred.");
       }
+    } finally {
+      setLoading(false);
     }
   };
 

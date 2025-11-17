@@ -10,7 +10,20 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ["localhost", "botosafe.website"],
+    domains: ["localhost", "botosafe.website", "res.cloudinary.com"],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+        pathname: "/**",
+      },
+    ],
+  },
+  // Increase API body size limit for file uploads
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
   },
   webpack: (config) => {
     config.ignoreWarnings = [{ module: /node_modules/ }];
