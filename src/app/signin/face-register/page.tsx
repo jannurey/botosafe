@@ -461,8 +461,8 @@ export default function FaceRegistrationPage() {
             .detectSingleFace(
               videoRef.current,
               new faceapi.TinyFaceDetectorOptions({ 
-                scoreThreshold: 0.15,  // Very low threshold for mobile
-                inputSize: 224  // Smaller input size for better mobile performance
+                scoreThreshold: 0.1,  // Very low threshold - accept weak detections
+                inputSize: 160  // Smaller input = faster and more forgiving on angles
               })
             )
             .withFaceLandmarks()) ?? null;
