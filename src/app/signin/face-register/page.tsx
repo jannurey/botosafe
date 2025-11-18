@@ -371,7 +371,7 @@ export default function FaceRegistrationPage() {
     let lastDetectionTime = 0; // Timestamp of last detection
     let consecutiveNoFaceFrames = 0; // Count frames without face
     const DETECTION_INTERVAL = 100; // Minimum interval between detections (ms)
-    const FACE_LOSS_TOLERANCE = 8; // Allow 8 consecutive frames (~800ms) without face before resetting
+    const FACE_LOSS_TOLERANCE = 25; // Allow 25 consecutive frames (~2.5 seconds) without face before resetting
 
     const startCamera = async () => {
       const video = videoRef.current;
@@ -460,7 +460,10 @@ export default function FaceRegistrationPage() {
           (await faceapi
             .detectSingleFace(
               videoRef.current,
-              new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.2 })
+              new faceapi.TinyFaceDetectorOptions({ 
+                scoreThreshold: 0.15,  // Very low threshold for mobile
+                inputSize: 224  // Smaller input size for better mobile performance
+              })
             )
             .withFaceLandmarks()) ?? null;
 
@@ -503,18 +506,19 @@ export default function FaceRegistrationPage() {
             return; // Stop the detection loop after registration
           }
         } else {
-          // No face detected - use tolerance to avoid resetting on brief detection failures
+          // No face detected - use high tolerance to avoid resetting on brief detection failures
           if (isScanning) {
             consecutiveNoFaceFrames++;
             
-            // Only reset if face is lost for multiple consecutive frames (about 800ms)
+            // Only reset if face is lost for 25 consecutive frames (~2.5 seconds)
+            // This is very forgiving for mobile cameras and unstable detection
             if (consecutiveNoFaceFrames >= FACE_LOSS_TOLERANCE) {
               setIsScanning(false);
               setScanTimer(0);
-              setStatus("⚠️ Face lost. Please stay in frame.");
+              setStatus("⚠️ Face lost for too long. Please stay in frame.");
               consecutiveNoFaceFrames = 0; // Reset counter
             }
-            // Otherwise, tolerate brief face detection failures and keep timer running
+            // Otherwise, keep timer running even if face not detected
           }
         }
       } catch (error) {
