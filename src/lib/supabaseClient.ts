@@ -220,6 +220,14 @@ export const userOtps = {
 
 // User faces table operations
 export const userFaces = {
+  // Get all face embeddings (for duplicate checking)
+  getAll: async () => {
+    const builder = supabaseAdmin
+      .from('user_faces')
+      .select('id, user_id, face_embedding');
+    return handleSupabaseResponse<UserFaceData>(builder);
+  },
+
   // Get face embedding for user
   getByUserId: async (userId: number) => {
     const { data, error } = await supabaseAdmin

@@ -13,7 +13,7 @@ type ProgressState = {
   blink: boolean;
 };
 
-type StepType = "blink" | "done";
+type StepType = "scanning" | "done";
 
 type VotePayload = { userId: number; votes: Record<string, number> };
 type Candidate = { id: number; fullname: string; position_name: string };
@@ -42,7 +42,7 @@ export default function FaceScanVotePage() {
   const [status, setStatus] = useState("Initializing...");
   const [faceapi, setFaceapi] = useState<typeof FaceAPI | null>(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [step, setStep] = useState<StepType>("blink");
+  const [step, setStep] = useState<StepType>("scanning");
   const [progress, setProgress] = useState<ProgressState>({
     blink: false,
   });
@@ -52,6 +52,9 @@ export default function FaceScanVotePage() {
   const [votedCandidates, setVotedCandidates] = useState<Candidate[]>([]);
   const [lightingScore, setLightingScore] = useState<number | null>(null);
   const [lightingMessage, setLightingMessage] = useState("");
+  // Add states for scanning timer
+  const [scanTimer, setScanTimer] = useState(0);
+  const [isScanning, setIsScanning] = useState(false);
   // Add state for showing scan again button
   const [showScanAgain, setShowScanAgain] = useState(false);
   // Add state for error messages queue
@@ -61,14 +64,19 @@ export default function FaceScanVotePage() {
   // Add state for loading states
   const [cameraLoading, setCameraLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [submittingVote, setSubmittingVote] = useState(false); // Prevent double submission
+  // Add state to store captured face data
+  const [capturedFaceData, setCapturedFaceData] = useState<number[] | null>(null);
 
-  const EAR_THRESHOLD = 0.3;
+  const SCAN_DURATION = 3; // Seconds to scan face
+  const SIMILARITY_THRESHOLD = 0.85; // 85% similarity threshold
   const MIN_BRIGHTNESS = 50;
   const MAX_BRIGHTNESS = 200;
   const OPTIMAL_BRIGHTNESS_MIN = 70;
   const OPTIMAL_BRIGHTNESS_MAX = 180;
 
   useEffect(() => setMounted(true), []);
+  
   useEffect(() => {
     if (typeof window === "undefined") return;
     // Use the global model manager instead of loading face-api directly
@@ -148,7 +156,7 @@ export default function FaceScanVotePage() {
   };
 
   // --- Stop camera ---
-  const stopCamera = (): void => {
+  const stopCamera = useCallback((): void => {
     const video = videoRef.current;
     if (video && video.srcObject) {
       const stream = video.srcObject as MediaStream;
@@ -159,83 +167,98 @@ export default function FaceScanVotePage() {
     }
     setCameraLoading(false);
     setProcessing(false);
-  };
+  }, []);
 
   // --- Reset check ---
-  const resetCheck = (): void => {
+  const resetCheck = useCallback((): void => {
     setLivenessDone(false);
-    setStep("blink");
+    setStep("scanning");
     setProgress({ blink: false });
+    setScanTimer(0);
+    setIsScanning(false);
     setShowScanAgain(false); // Hide scan again button
-    clearErrorMessages();
+    setCapturedFaceData(null); // Clear captured face data
+    setErrorMessages([]); // Clear error messages directly
     // Don't stop camera immediately on reset to avoid AbortError
     // Camera will be stopped when component unmounts or when needed
-  };
+  }, []);
 
   // --- Add error message to queue with throttling ---
-  const addErrorMessage = (message: string) => {
-    // Prevent adding duplicate messages
-    if (errorMessages.includes(message)) {
-      return;
-    }
-    
-    // Limit the number of error messages to prevent overflow
-    if (errorMessages.length >= 3) {
-      // Remove the oldest message
-      setErrorMessages(prev => [...prev.slice(1), message]);
-    } else {
-      setErrorMessages(prev => [...prev, message]);
-    }
-    
-    // Auto remove message after 5 seconds
-    setTimeout(() => {
-      setErrorMessages(prev => prev.filter(msg => msg !== message));
-    }, 5000);
-  };
+  const addErrorMessage = useCallback((message: string) => {
+    setErrorMessages(prev => {
+      // Prevent adding duplicate messages
+      if (prev.includes(message)) {
+        return prev;
+      }
+      
+      // Limit the number of error messages to prevent overflow
+      const newMessages = prev.length >= 3 ? [...prev.slice(1), message] : [...prev, message];
+      
+      // Auto remove message after 5 seconds
+      setTimeout(() => {
+        setErrorMessages(current => current.filter(msg => msg !== message));
+      }, 5000);
+      
+      return newMessages;
+    });
+  }, []);
 
   // --- Clear all error messages ---
-  const clearErrorMessages = () => {
+  const clearErrorMessages = useCallback(() => {
     setErrorMessages([]);
-  };
+  }, []);
 
   // --- Set success message with prevention of duplicates ---
-  const setSuccessMsg = (message: string) => {
-    // Prevent setting the same success message multiple times
-    if (successMessage === message) {
-      return;
-    }
+  const setSuccessMsg = useCallback((message: string) => {
+    setSuccessMessage(prev => {
+      // Prevent setting the same success message multiple times
+      if (prev === message) {
+        return prev;
+      }
+      
+      // Auto clear after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage("");
+      }, 3000);
+      
+      return message;
+    });
+  }, []);
+
+  // Check for pending vote on mount - must be after addErrorMessage is declared
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     
-    setSuccessMessage(message);
-    // Auto clear after 3 seconds
-    setTimeout(() => {
-      setSuccessMessage("");
-    }, 3000);
-  };
+    const pendingVote = localStorage.getItem("pendingVote");
+    const electionId = localStorage.getItem("electionId");
+    
+    if (!pendingVote || !electionId) {
+      addErrorMessage("❌ No pending vote found. Redirecting to vote page...");
+      setTimeout(() => {
+        router.push("/pages/vote");
+      }, 2000);
+    }
+  }, [router, addErrorMessage]);
 
   // --- Verify & Submit Vote ---
   const verifyAndSubmitVote = useCallback(
-    async (video: HTMLVideoElement): Promise<void> => {
-      if (!faceapi) return;
+    async (): Promise<void> => {
+      if (!faceapi || submittingVote || !capturedFaceData) return; // Prevent double submission and ensure we have face data
+      setSubmittingVote(true);
       setVerifying(true);
       setProcessing(true);
       setStatus("🧠 Verifying your face before voting...");
       clearErrorMessages();
 
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 10000)
+        setTimeout(() => reject(new Error("timeout")), 20000) // Increased to 20 seconds
       );
 
       try {
         await Promise.race([
           (async () => {
-            const detection = await faceapi
-              .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-              .withFaceLandmarks()
-              .withFaceDescriptor();
-
-            if (!detection) throw new Error("no_face");
-
-            const embedding = Array.from(detection.descriptor);
+            // Use the already captured face data instead of detecting again
+            const embedding = capturedFaceData;
             
             // Get userId from authenticated session instead of localStorage
             const userRes = await fetch("/api/users/me", {
@@ -268,8 +291,16 @@ export default function FaceScanVotePage() {
               throw new Error(`conflict: ${data.message ?? "Face already registered to another account"}`);
             }
             
-            if (!res.ok || !data.match)
+            if (!res.ok || !data.match) {
+              // If similarity is below threshold, redirect to vote page with error
+              if (data.message && data.message.includes("similarity")) {
+                stopCamera();
+                localStorage.setItem("voteVerificationError", "Face verification failed. Please try again.");
+                router.push("/pages/vote");
+                return;
+              }
               throw new Error(data.message ?? "mismatch");
+            }
 
             const pendingVote = localStorage.getItem("pendingVote");
             if (!pendingVote) throw new Error("no_vote");
@@ -291,7 +322,10 @@ export default function FaceScanVotePage() {
               body: JSON.stringify({ votes: payload.votes, voteToken, userId }), // Include authenticated userId
             });
 
-            if (!voteRes.ok) throw new Error("vote_failed");
+            if (!voteRes.ok) {
+              const voteError = await voteRes.json();
+              throw new Error(voteError.error || "vote_failed");
+            }
 
             // 🧾 Display receipt
             const candidateData: Candidate[] = JSON.parse(
@@ -304,6 +338,8 @@ export default function FaceScanVotePage() {
             setShowReceipt(true);
 
             localStorage.removeItem("pendingVote");
+            localStorage.removeItem("electionId");
+            localStorage.removeItem("candidateList");
             stopCamera();
             setSuccessMsg("✅ Vote successfully submitted!");
           })(),
@@ -319,33 +355,41 @@ export default function FaceScanVotePage() {
           addErrorMessage(`❌ ${err.message.substring(9)}`); // Remove "conflict:" prefix
           setShowScanAgain(true); // Show scan again button
         } else if (err.message === "timeout") {
-          addErrorMessage("⚠️ Verification timeout. Please try again.");
-          setTimeout(() => resetCheck(), 2000);
+          addErrorMessage("⚠️ Verification timeout. Your face took too long to verify. Please try again.");
+          setTimeout(() => resetCheck(), 3000);
         } else if (err.message === "no_face") {
-          addErrorMessage("❌ No face detected. Please try again.");
-          setTimeout(() => resetCheck(), 2000);
+          addErrorMessage("❌ No face detected during verification. Please try again.");
+          setTimeout(() => resetCheck(), 3000);
         } else if (err.message === "session_expired") {
           addErrorMessage("❌ Session expired. Please log in again.");
+          setTimeout(() => router.push("/signin/login"), 2000);
         } else if (err.message === "no_vote") {
-          addErrorMessage("❌ No vote data found. Please try again.");
+          addErrorMessage("❌ No vote data found. Please go back and select your candidates.");
+          setTimeout(() => router.push("/pages/vote"), 2000);
         } else if (err.message === "token_failed") {
           addErrorMessage("❌ Failed to generate vote token. Please try again.");
+          setTimeout(() => resetCheck(), 3000);
         } else if (err.message === "vote_failed") {
           addErrorMessage("❌ Failed to submit vote. Please try again.");
+          setTimeout(() => resetCheck(), 3000);
+        } else if (err.message.includes("already voted")) {
+          addErrorMessage("❌ You have already voted in this election.");
+          setTimeout(() => router.push("/pages/dashboard"), 2000);
         } else {
-          addErrorMessage("⚠️ Verification failed. Try again.");
-          setTimeout(() => resetCheck(), 2000);
+          addErrorMessage(`⚠️ Verification failed: ${err.message}`);
+          setTimeout(() => resetCheck(), 3000);
         }
       } else {
         addErrorMessage("⚠️ Verification failed. Unknown error.");
-        setTimeout(() => resetCheck(), 2000);
+        setTimeout(() => resetCheck(), 3000);
       }
       } finally {
         setVerifying(false);
         setProcessing(false);
+        setSubmittingVote(false);
       }
     },
-    [faceapi]
+    [faceapi, submittingVote, capturedFaceData, router, stopCamera, clearErrorMessages, addErrorMessage, resetCheck, setSuccessMsg]
   );
 
   // --- Load Models ---
@@ -394,6 +438,7 @@ export default function FaceScanVotePage() {
     let lastLightingCheck = 0; // Timestamp of last lighting check
     let lastDetectionTime = 0; // Timestamp of last detection
     const DETECTION_INTERVAL = 100; // Minimum interval between detections (ms)
+    let scanningStarted = false; // Track if scanning has started
 
     const startCamera = async (): Promise<void> => {
       const video = videoRef.current;
@@ -405,6 +450,11 @@ export default function FaceScanVotePage() {
         
         if (video.srcObject) {
           (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+        }
+
+        // Check if mediaDevices is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Camera not supported. Please use HTTPS or check browser permissions.");
         }
 
         stream = await navigator.mediaDevices.getUserMedia({
@@ -428,10 +478,26 @@ export default function FaceScanVotePage() {
             setCameraLoading(false);
           }
         }
-      } catch (err) {
+      } catch (err: unknown) {
         if (detectionRunning) {
-          console.error(err);
-          addErrorMessage("❌ Camera access failed");
+          console.error("Camera initialization error:", err);
+          if (err instanceof Error) {
+            if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+              addErrorMessage("❌ Camera access denied. Please allow camera permissions in your browser settings.");
+            } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+              addErrorMessage("❌ No camera found. Please ensure your device has a camera.");
+            } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+              addErrorMessage("❌ Camera is already in use by another application.");
+            } else if (err.name === "OverconstrainedError") {
+              addErrorMessage("❌ Camera constraints not supported. Please try a different device.");
+            } else if (err.name === "TypeError" || err.message.includes("not supported")) {
+              addErrorMessage("❌ Camera not supported. Please ensure you're using HTTPS.");
+            } else {
+              addErrorMessage(`❌ Camera initialization failed: ${err.message}`);
+            }
+          } else {
+            addErrorMessage("❌ Camera access failed. Please check your browser settings.");
+          }
           setCameraLoading(false);
         }
         return;
@@ -459,36 +525,22 @@ export default function FaceScanVotePage() {
           .withFaceLandmarks();
 
         if (detection && !livenessDone) {
-          const landmarks = detection.landmarks;
-          const leftEAR = eyeAspectRatio(landmarks.getLeftEye());
-          const rightEAR = eyeAspectRatio(landmarks.getRightEye());
-          const ear = (leftEAR + rightEAR) / 2;
-
-          if (step === "blink" && ear < EAR_THRESHOLD) {
-            setProgress((p) => ({ ...p, blink: true }));
-            setStep("done");
-            setStatus("✅ Liveness check passed!");
-            setLivenessDone(true);
-            detectionRunning = false;
-            cancelAnimationFrame(animationId);
-            
-            // Check lighting before verification (throttled to once per second)
-            if (now - lastLightingCheck > 1000) {
-              lastLightingCheck = now;
-              const lighting = analyzeLighting(video);
-              setLightingScore(lighting.score);
-              setLightingMessage(lighting.message);
-              
-              // Only proceed with verification if lighting is acceptable
-              if (lighting.score >= 30 && lighting.score <= 220) {
-                await verifyAndSubmitVote(video);
-              } else {
-                addErrorMessage(`⚠️ ${lighting.message} Please adjust lighting before continuing.`);
-                setTimeout(() => resetCheck(), 2000);
-                return;
-              }
-            }
-            return; // Stop the detection loop immediately
+          // Simple detection - just check if face is detected
+          if (!scanningStarted) {
+            // Face detected, start scanning
+            scanningStarted = true;
+            setIsScanning(true);
+            setScanTimer(0);
+            setStatus("📸 Face detected! Stay still for 3 seconds...");
+          }
+        } else {
+          // No face detected
+          if (scanningStarted) {
+            // Face lost during scanning, reset
+            scanningStarted = false;
+            setIsScanning(false);
+            setScanTimer(0);
+            setStatus("⚠️ Face lost. Please stay in frame.");
           }
         }
         
@@ -542,7 +594,82 @@ export default function FaceScanVotePage() {
         }
       }
     };
-  }, [modelsLoaded, faceapi, livenessDone, step, verifyAndSubmitVote, analyzeLighting, showScanAgain]);
+  }, [modelsLoaded, faceapi, livenessDone]); // Removed problematic dependencies
+
+  // Scan timer effect
+  useEffect(() => {
+    if (step === "scanning" && isScanning && !livenessDone && !submittingVote) {
+      const interval = setInterval(() => {
+        setScanTimer((prev) => {
+          const newTime = prev + 0.1;
+          if (newTime >= SCAN_DURATION) {
+            clearInterval(interval);
+            // Scan duration complete, capture face and proceed to verification
+            setStep("done");
+            setStatus("✅ Scan complete! Capturing your face...");
+            setLivenessDone(true);
+            
+            // Capture face data ONCE when timer completes
+            if (videoRef.current && !submittingVote && faceapi) {
+              const video = videoRef.current;
+              // Check lighting before capturing
+              const lighting = analyzeLighting(video);
+              setLightingScore(lighting.score);
+              setLightingMessage(lighting.message);
+              
+              // Only proceed if lighting is acceptable
+              if (lighting.score >= 30 && lighting.score <= 220) {
+                // Capture face data asynchronously
+                (async () => {
+                  try {
+                    const detection = await faceapi
+                      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                      .withFaceLandmarks()
+                      .withFaceDescriptor();
+
+                    if (detection) {
+                      const embedding = Array.from(detection.descriptor);
+                      setCapturedFaceData(embedding);
+                      setStatus("✅ Face captured! Verifying...");
+                      // Verification will trigger automatically via useEffect when capturedFaceData is set
+                    } else {
+                      addErrorMessage("❌ No face detected during capture. Please try again.");
+                      setTimeout(() => resetCheck(), 2000);
+                    }
+                  } catch (err) {
+                    console.error("Face capture error:", err);
+                    addErrorMessage("❌ Failed to capture face. Please try again.");
+                    setTimeout(() => resetCheck(), 2000);
+                  }
+                })();
+              } else {
+                addErrorMessage(`⚠️ ${lighting.message} Please adjust lighting before continuing.`);
+                setTimeout(() => resetCheck(), 2000);
+              }
+            }
+            return SCAN_DURATION;
+          }
+          return newTime;
+        });
+      }, 100); // Update every 100ms for smooth progress
+
+      return () => clearInterval(interval);
+    }
+  }, [step, isScanning, livenessDone, submittingVote, faceapi, analyzeLighting, addErrorMessage, resetCheck]);
+
+  // Trigger verification when face data is captured
+  useEffect(() => {
+    if (capturedFaceData && !submittingVote && livenessDone && !showReceipt) {
+      // Check if we have pending vote data before triggering verification
+      const pendingVote = localStorage.getItem("pendingVote");
+      if (!pendingVote) {
+        addErrorMessage("❌ No vote data found. Redirecting to vote page...");
+        setTimeout(() => router.push("/pages/vote"), 2000);
+        return;
+      }
+      verifyAndSubmitVote();
+    }
+  }, [capturedFaceData, submittingVote, livenessDone, showReceipt, verifyAndSubmitVote, addErrorMessage, router]);
 
   if (!mounted)
     return React.createElement("main", { className: "min-h-screen bg-white" });
@@ -572,7 +699,9 @@ export default function FaceScanVotePage() {
         React.createElement(
           "p",
           { className: "text-center text-gray-700 mb-4" },
-          "Action: Blink"
+          step === "scanning" && isScanning
+            ? `Stay in frame: ${Math.ceil(SCAN_DURATION - scanTimer)}s remaining`
+            : "Position your face in the camera"
         ),
         // Error Messages Queue
         errorMessages.length > 0
@@ -699,11 +828,11 @@ export default function FaceScanVotePage() {
           React.createElement(
             "p",
             { className: "mt-4 text-center w-full font-semibold text-gray-700" },
-            step === "blink"
-              ? "👁 Blink now..."
+            step === "scanning" && isScanning
+              ? `📸 Scanning... ${Math.ceil(SCAN_DURATION - scanTimer)}s`
               : step === "done"
-              ? "✅ Liveness check passed!"
-              : ""
+              ? "✅ Verification complete!"
+              : "👁 Please look at the camera"
           ),
           // Lighting Message
           lightingMessage
@@ -740,8 +869,10 @@ export default function FaceScanVotePage() {
                   onClick: () => {
                     // Reset state
                     setShowScanAgain(false);
-                    setStep("blink");
+                    setStep("scanning");
                     setProgress({ blink: false });
+                    setScanTimer(0);
+                    setIsScanning(false);
                     setStatus("📸 Camera ready...");
                     clearErrorMessages();
                     

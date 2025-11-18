@@ -174,28 +174,35 @@ export default async function handler(
       if (!decrypted) continue;
 
       try {
-        const parsed = JSON.parse(decrypted) as {
-          positionId: string;
-          candidateId: string;
-        };
-
-        const cid = parseInt(parsed.candidateId, 10);
-        if (!isNaN(cid)) {
-          voteCounts[cid] = (voteCounts[cid] || 0) + 1;
-        }
+        // Vote data is stored as Record<string, number> (position_id -> candidate_id)
+        const parsed = JSON.parse(decrypted) as Record<string, number>;
+        
+        // Each entry in the object is a vote for a candidate
+        Object.values(parsed).forEach((candidateId) => {
+          const cid = Number(candidateId);
+          if (!isNaN(cid)) {
+            voteCounts[cid] = (voteCounts[cid] || 0) + 1;
+          }
+        });
       } catch (e) {
-        console.error("⚠️ Invalid decrypted vote JSON:", e);
+        console.error("⚠️ Invalid decrypted vote JSON:", e, "Decrypted:", decrypted);
       }
     }
 
     // 🔹 Merge with candidates
-    const results: ResultData[] = candidates.map((c) => ({
-      candidate_id: c.id,
-      position_id: c.position_id,
-      position_name: c.position && c.position.length > 0 ? c.position[0].name : '',
-      candidate_name: c.user && c.user.length > 0 ? c.user[0].fullname : '',
-      vote_count: voteCounts[c.id] || 0,
-    }));
+    const results: ResultData[] = candidates.map((c) => {
+      // Handle both object and array responses from Supabase
+      const positionData = Array.isArray(c.position) ? c.position[0] : c.position;
+      const userData = Array.isArray(c.user) ? c.user[0] : c.user;
+      
+      return {
+        candidate_id: c.id,
+        position_id: c.position_id,
+        position_name: positionData?.name || '',
+        candidate_name: userData?.fullname || '',
+        vote_count: voteCounts[c.id] || 0,
+      };
+    });
 
     // 🔹 Fetch turnout
     const { data: turnout, error: turnoutError } = await supabaseAdmin

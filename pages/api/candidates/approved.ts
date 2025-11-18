@@ -111,8 +111,7 @@ export default async function handler(
       .eq('status', 'approved')
       .eq('user.approval_status', 'approved')
       .eq('user.user_status', 'active')
-      .order('position_id')
-      .order('user.fullname');
+      .order('position_id', { ascending: true });
 
     if (error) {
       console.error("❌ Supabase Error:", error);
@@ -147,6 +146,14 @@ export default async function handler(
         status: row.status,
         created_at: row.created_at
       };
+    });
+
+    // Sort by position_id and then by fullname (client-side sorting)
+    candidates.sort((a, b) => {
+      if (a.position_id !== b.position_id) {
+        return a.position_id - b.position_id;
+      }
+      return a.fullname.localeCompare(b.fullname);
     });
 
     // ✅ Group candidates by position

@@ -60,6 +60,57 @@ export default async function handler(
     // Normalize the embedding
     const normalizedEmbedding = normalizeEmbedding(embedding);
     
+    // ✅ CHECK FOR DUPLICATE FACES ACROSS ALL USERS
+    // Fetch all existing face embeddings from database
+    const { data: allFaces, error: fetchError } = await userFaces.getAll();
+    
+    if (fetchError) {
+      console.error("Error fetching existing faces:", fetchError);
+      res.status(500).json({ message: "Failed to verify face uniqueness" });
+      return;
+    }
+    
+    // Check if this face already exists for another user
+    const SIMILARITY_THRESHOLD = 0.80; // 80% similarity threshold (stricter than before)
+    
+    if (allFaces && allFaces.length > 0) {
+      for (const existingFace of allFaces) {
+        // Skip checking against the current user's own face (if updating)
+        if (existingFace.user_id === userId) {
+          continue;
+        }
+        
+        try {
+          // Skip if no embedding data
+          if (!existingFace.face_embedding) {
+            continue;
+          }
+          
+          // Parse the stored embedding
+          const storedEmbedding = JSON.parse(existingFace.face_embedding);
+          
+          // Normalize the stored embedding to ensure consistent comparison
+          const normalizedStored = normalizeEmbedding(storedEmbedding);
+          
+          // Calculate similarity between normalized embeddings
+          const similarity = cosineSimilarity(normalizedEmbedding, normalizedStored);
+          
+          // If similarity exceeds threshold, reject registration
+          if (similarity >= SIMILARITY_THRESHOLD) {
+            console.log(`🚫 Duplicate face detected! Similarity: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+            res.status(409).json({ 
+              message: "This face is already registered to another account. Each person can only have one account. Please contact support if you believe this is an error." 
+            });
+            return;
+          }
+        } catch (parseError) {
+          console.error("Error parsing stored embedding:", parseError);
+          // Continue checking other faces even if one fails to parse
+          continue;
+        }
+      }
+    }
+    
     // Convert to JSON string for storage
     const embeddingJson = JSON.stringify(normalizedEmbedding);
 
