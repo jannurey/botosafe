@@ -460,7 +460,7 @@ export default function FaceRegistrationPage() {
           (await faceapi
             .detectSingleFace(
               videoRef.current,
-              new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 })
+              new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.2 })
             )
             .withFaceLandmarks()) ?? null;
 
