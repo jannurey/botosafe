@@ -81,7 +81,9 @@ export default async function handler(
     }
     
     // Check if this face already exists for another user
-    const SIMILARITY_THRESHOLD = 0.85; // 85% similarity threshold for consistency with verification
+    // Higher threshold (0.92) means only very similar faces are considered duplicates
+    // This prevents false positives while still catching actual duplicate registrations
+    const SIMILARITY_THRESHOLD = 0.92; // 92% similarity required for duplicate detection
     
     if (allFaces && allFaces.length > 0) {
       for (const existingFace of allFaces) {
@@ -119,10 +121,14 @@ export default async function handler(
               // If similarity exceeds threshold, reject registration
               if (similarity >= SIMILARITY_THRESHOLD) {
                 console.log(`🚫 Duplicate face detected! Similarity: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+                console.log(`   Threshold: ${SIMILARITY_THRESHOLD} (${(SIMILARITY_THRESHOLD * 100).toFixed(0)}%)`);
                 res.status(409).json({ 
                   message: "This face is already registered to another account. Each person can only have one account. Please contact support if you believe this is an error." 
                 });
                 return;
+              } else if (similarity >= 0.85) {
+                // Log high similarity matches for monitoring (but don't reject)
+                console.log(`⚠️ High similarity detected: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%) with user ${existingFace.user_id} - Below threshold, allowing registration`);
               }
             }
           }

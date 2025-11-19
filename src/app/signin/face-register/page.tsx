@@ -15,7 +15,7 @@ type ProgressState = {
   holdStill: boolean;
 };
 
-type StepType = "scanning" | "done";
+type StepType = "turnLeft" | "turnRight" | "holdStill" | "done";
 
 // ---------------- SSR Polyfill ----------------
 if (typeof window === "undefined") {
@@ -41,7 +41,7 @@ export default function FaceRegistrationPage() {
   const [status, setStatus] = useState("Initializing...");
   const [faceapi, setFaceapi] = useState<typeof FaceAPI | null>(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [step, setStep] = useState<StepType>("scanning");
+  const [step, setStep] = useState<StepType>("turnLeft"); // Start with turn left
   const [progress, setProgress] = useState<ProgressState>({
     turnLeft: false,
     turnRight: false,
@@ -71,6 +71,13 @@ export default function FaceRegistrationPage() {
   const MAX_BRIGHTNESS = 200;
   const OPTIMAL_BRIGHTNESS_MIN = 70;
   const OPTIMAL_BRIGHTNESS_MAX = 180;
+  
+  // Head pose thresholds for liveness detection (accounting for mirrored video)
+  // When user turns LEFT physically → negative yaw angle (nose moves left)
+  // When user turns RIGHT physically → positive yaw angle (nose moves right)
+  const HEAD_YAW_LEFT_THRESHOLD = -8; // Negative = user turns left physically
+  const HEAD_YAW_RIGHT_THRESHOLD = 8; // Positive = user turns right physically
+  const HEAD_YAW_CENTER_THRESHOLD = 5; // Within ±5 degrees is center
 
   useEffect(() => {
     setMounted(true);
@@ -196,6 +203,27 @@ export default function FaceRegistrationPage() {
     return v / h;
   };
 
+  // Calculate head yaw (left-right rotation) from facial landmarks
+  const calculateHeadYaw = (landmarks: FaceAPI.FaceLandmarks68): number => {
+    const points = landmarks.positions;
+    // Use nose tip (30), left eye outer corner (36), right eye outer corner (45)
+    const noseTip = points[30];
+    const leftEye = points[36];
+    const rightEye = points[45];
+    
+    // Calculate distances from nose to each eye
+    const distLeft = Math.hypot(noseTip.x - leftEye.x, noseTip.y - leftEye.y);
+    const distRight = Math.hypot(noseTip.x - rightEye.x, noseTip.y - rightEye.y);
+    
+    // Calculate yaw angle (negative = left, positive = right)
+    // When head turns left, nose is closer to left eye
+    // When head turns right, nose is closer to right eye
+    const ratio = (distRight - distLeft) / (distRight + distLeft);
+    const yawAngle = ratio * 45; // Scale to approximate degrees
+    
+    return yawAngle;
+  };
+
   // --- Stop camera ---
   const stopCamera = (): void => {
     const video = videoRef.current;
@@ -269,7 +297,7 @@ export default function FaceRegistrationPage() {
           addErrorMessage("❌ No face detected. Please try again.");
           setRegistering(false);
           setProcessing(false);
-          setStep("scanning");
+          setStep("turnLeft");
           setProgress({ turnLeft: false, turnRight: false, holdStill: false });
           setScanTimer(0);
           setIsScanning(false);
@@ -322,7 +350,6 @@ export default function FaceRegistrationPage() {
           const data: { message?: string } = await res.json();
           if (res.status === 409) {
             // Face already registered to another account
-            console.log("🚫 Duplicate face detected! Stopping all detection...");
             addErrorMessage(`🚫 ${data.message || "This face is already registered to another account."}`);
             stopCamera(); // Stop camera when face is already registered
             setShowScanAgain(false); // Don't allow scan again for duplicate faces
@@ -338,7 +365,7 @@ export default function FaceRegistrationPage() {
             addErrorMessage(`❌ Registration failed: ${data.message ?? "Unknown error"}`);
             setRegistering(false); // Allow retry for other errors
             setProcessing(false);
-            setStep("scanning"); // Reset to scanning step for retry
+            setStep("turnLeft"); // Reset to first step for retry
             setProgress({ turnLeft: false, turnRight: false, holdStill: false });
             setScanTimer(0);
             setIsScanning(false);
@@ -349,7 +376,7 @@ export default function FaceRegistrationPage() {
         addErrorMessage("⚠️ Registration failed. Please try again.");
         setRegistering(false);
         setProcessing(false);
-        setStep("scanning"); // Reset to scanning step for retry
+        setStep("turnLeft"); // Reset to first step for retry
         setProgress({ turnLeft: false, turnRight: false, holdStill: false });
         setScanTimer(0);
         setIsScanning(false);
@@ -455,7 +482,6 @@ export default function FaceRegistrationPage() {
       
       // Stop detection if duplicate face was detected
       if (duplicateFaceDetected) {
-        console.log("🚫 Detection loop stopped due to duplicate face");
         isDetectionRunning = false;
         return;
       }
@@ -500,14 +526,37 @@ export default function FaceRegistrationPage() {
           // Reset consecutive no-face counter when face is detected
           consecutiveNoFaceFrames = 0;
           
-          // Simple detection - just check if face is detected
-          if (step === "scanning" && !isScanning && !scanningStarted) {
-            // Face detected, start scanning
-            console.log("✅ Face detected! Starting timer...");
+          // Get head yaw angle for liveness detection
+          const yawAngle = calculateHeadYaw(detection.landmarks);
+          
+          // Debug: Show yaw angle to user
+          if (step === "turnLeft" || step === "turnRight") {
+            setStatus(`Head angle: ${yawAngle.toFixed(1)}° - ${step === "turnLeft" ? "Turn your head LEFT" : "Turn your head RIGHT"} - Step: ${step}`);
+          }
+          
+          // Liveness check: User turns LEFT physically (negative angle)
+          if (step === "turnLeft" && yawAngle < HEAD_YAW_LEFT_THRESHOLD) {
+            console.log(`✅ Physical LEFT turn detected! Angle: ${yawAngle.toFixed(1)}°, Threshold: ${HEAD_YAW_LEFT_THRESHOLD}`);
+            setProgress((p) => ({ ...p, turnLeft: true })); // Mark left as complete
+            setStep("turnRight"); // Next: user turns right physically
+            setStatus("--> Now turn your head to the RIGHT");
+          }
+          
+          // Liveness check: User turns RIGHT physically (positive angle)
+          else if (step === "turnRight" && yawAngle > HEAD_YAW_RIGHT_THRESHOLD) {
+            console.log(`✅ Physical RIGHT turn detected! Angle: ${yawAngle.toFixed(1)}°, Threshold: ${HEAD_YAW_RIGHT_THRESHOLD}`);
+            setProgress((p) => ({ ...p, turnRight: true })); // Mark right as complete
+            setStep("holdStill");
+            setStatus("📸 Great! Now hold still and look forward...");
+          }
+          
+          // Head turning liveness detection or hold still phase
+          if (step === "holdStill" && !isScanning && !scanningStarted) {
+            // Face detected in hold still phase, start 5-second timer
             scanningStarted = true; // Set local flag immediately to prevent duplicate starts
             setIsScanning(true);
             setScanTimer(0);
-            setStatus("📸 Face detected! Stay still for 5 seconds...");
+            setStatus("📸 Hold still for 5 seconds...");
           }
           // Don't update status while scanning - let the timer run without interference
 
@@ -519,18 +568,14 @@ export default function FaceRegistrationPage() {
               setLightingScore(lighting.score);
               setLightingMessage(lighting.message);
               
-              console.log(`💡 Lighting check: ${lighting.score} - ${lighting.message}`);
-              
               // Only proceed with registration if lighting is acceptable
               if (lighting.score >= 30 && lighting.score <= 220) {
-                console.log("🎯 Starting face registration...");
                 isDetectionRunning = false; // Stop detection loop
                 await registerFace(video);
               } else {
-                console.log("⚠️ Lighting too poor, resetting scan...");
                 addErrorMessage(`⚠️ ${lighting.message} Please adjust lighting before continuing.`);
                 scanningStarted = false; // Reset local flag
-                setStep("scanning");
+                setStep("turnLeft");
                 setProgress({ turnLeft: false, turnRight: false, holdStill: false });
                 setScanTimer(0);
                 setIsScanning(false);
@@ -606,17 +651,14 @@ export default function FaceRegistrationPage() {
     };
   }, [modelsLoaded, faceapi, step, registering, registerFace, isSecureContext, analyzeLighting, showScanAgain, duplicateFaceDetected]);
 
-  // Scan timer effect
+  // Scan timer effect - only for holdStill phase
   useEffect(() => {
-    if (step === "scanning" && isScanning && !registering) {
-      console.log("⏱️ Timer effect triggered! Starting interval...");
+    if (step === "holdStill" && isScanning && !registering) {
       const interval = setInterval(() => {
         setScanTimer((prev) => {
           const newTime = prev + 0.1;
-          console.log(`⏱️ Timer: ${newTime.toFixed(1)}s / ${SCAN_DURATION}s`);
           if (newTime >= SCAN_DURATION) {
             clearInterval(interval);
-            console.log("✅ Scan complete!");
             // Scan duration complete
             setProgress((p) => ({ ...p, holdStill: true }));
             setStep("done");
@@ -628,7 +670,6 @@ export default function FaceRegistrationPage() {
       }, 100); // Update every 100ms for smooth progress
 
       return () => {
-        console.log("🚫 Timer effect cleanup");
         clearInterval(interval);
       };
     }
@@ -649,7 +690,11 @@ export default function FaceRegistrationPage() {
           <p className="text-center text-gray-700 mb-4">
             {duplicateFaceDetected
               ? "Face already registered"
-              : step === "scanning" && isScanning
+              : step === "turnLeft"
+              ? "Turn your head to the LEFT"
+              : step === "turnRight"
+              ? "Turn your head to the RIGHT"
+              : step === "holdStill" && isScanning
               ? `Stay in frame: ${Math.ceil(SCAN_DURATION - scanTimer)}s remaining`
               : step === "done"
               ? "Processing..."
@@ -706,8 +751,27 @@ export default function FaceRegistrationPage() {
               </div>
             )}
             
-            {/* Arrow Indicators - removed as we simplified the liveness check */}
-            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "scanning" && isScanning && (
+            {/* Visual indicators for head turning */}
+            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "turnLeft" && (
+              <div className="absolute top-1/2 left-8 transform -translate-y-1/2">
+                <div className="bg-blue-500/80 text-white px-6 py-4 rounded-full text-4xl font-bold animate-pulse">
+                  ⬅️
+                </div>
+                <p className="text-white text-center mt-2 font-semibold bg-black/50 px-3 py-1 rounded">Turn LEFT</p>
+              </div>
+            )}
+            
+            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "turnRight" && (
+              <div className="absolute top-1/2 right-8 transform -translate-y-1/2">
+                <div className="bg-blue-500/80 text-white px-6 py-4 rounded-full text-4xl font-bold animate-pulse">
+                  ➡️
+                </div>
+                <p className="text-white text-center mt-2 font-semibold bg-black/50 px-3 py-1 rounded">Turn RIGHT</p>
+              </div>
+            )}
+            
+            {/* Timer and progress for hold still phase */}
+            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "holdStill" && isScanning && (
               <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2">
                 <div className="bg-blue-500/80 text-white px-6 py-3 rounded-full text-lg font-bold">
                   {Math.ceil(SCAN_DURATION - scanTimer)}s
@@ -738,16 +802,23 @@ export default function FaceRegistrationPage() {
           </div>
 
           <div className="flex flex-col items-start mt-4 ml-4 text-sm">
-            <div className="bg-white/90 rounded-lg shadow p-3 border border-gray-300">
+            <div className="bg-white/90 rounded-lg shadow p-3 border border-gray-300 space-y-2">
+              <p className={progress.turnLeft ? "text-green-600" : "text-gray-600"}>
+                {progress.turnLeft ? "✅ Turn Head Left" : "⬜ Turn Head Left"}
+              </p>
+              <p className={progress.turnRight ? "text-green-600" : "text-gray-600"}>
+                {progress.turnRight ? "✅ Turn Head Right" : "⬜ Turn Head Right"}
+              </p>
               <p className={progress.holdStill ? "text-green-600" : "text-gray-600"}>
-                {progress.holdStill ? "✅ Face Scan (5s)" : "⬜ Face Scan (5s)"}
+                {progress.holdStill ? "✅ Hold Still (5s)" : "⬜ Hold Still (5s)"}
               </p>
             </div>
 
             <p className="mt-4 text-center w-full font-semibold text-gray-700">
-              {step === "scanning" && isScanning && `👁 Scanning... ${Math.ceil(SCAN_DURATION - scanTimer)}s`}
+              {step === "turnLeft" && "⬅️ Turn your head LEFT"}
+              {step === "turnRight" && "➡️ Turn your head RIGHT"}
+              {step === "holdStill" && isScanning && `👁 Hold still... ${Math.ceil(SCAN_DURATION - scanTimer)}s`}
               {step === "done" && "✅ Face scan complete!"}
-              {step === "scanning" && !isScanning && "📸 Please position your face"}
             </p>
             
             {/* Lighting Message */}
@@ -772,11 +843,11 @@ export default function FaceRegistrationPage() {
                 onClick={() => {
                   // Reset state
                   setShowScanAgain(false);
-                  setStep("scanning");
+                  setStep("turnLeft");
                   setProgress({ turnLeft: false, turnRight: false, holdStill: false });
                   setScanTimer(0);
                   setIsScanning(false);
-                  setStatus("📸 Camera ready. Position your face in the camera.");
+                  setStatus("📸 Camera ready. Turn your head to the left.");
                   clearErrorMessages();
                   
                   // Restart camera
