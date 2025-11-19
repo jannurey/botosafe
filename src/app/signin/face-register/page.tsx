@@ -63,6 +63,8 @@ export default function FaceRegistrationPage() {
   // Add state for loading states
   const [cameraLoading, setCameraLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  // Add state to track if face is already registered (duplicate detected)
+  const [duplicateFaceDetected, setDuplicateFaceDetected] = useState(false);
 
   const SCAN_DURATION = 5; // Seconds to scan face
   const MIN_BRIGHTNESS = 50;
@@ -320,11 +322,14 @@ export default function FaceRegistrationPage() {
           const data: { message?: string } = await res.json();
           if (res.status === 409) {
             // Face already registered to another account
+            console.log("🚫 Duplicate face detected! Stopping all detection...");
             addErrorMessage(`🚫 ${data.message || "This face is already registered to another account."}`);
             stopCamera(); // Stop camera when face is already registered
             setShowScanAgain(false); // Don't allow scan again for duplicate faces
             setRegistering(false);
             setProcessing(false);
+            setDuplicateFaceDetected(true); // Mark as duplicate to stop detection loop
+            setStep("done"); // Prevent detection loop from restarting
             // Show message for longer and redirect to login
             setTimeout(() => {
               window.location.href = "/signin/login";
@@ -370,6 +375,7 @@ export default function FaceRegistrationPage() {
     let lastLightingCheck = 0; // Timestamp of last lighting check
     let lastDetectionTime = 0; // Timestamp of last detection
     let consecutiveNoFaceFrames = 0; // Count frames without face
+    let scanningStarted = false; // Local flag to prevent multiple scan starts
     const DETECTION_INTERVAL = 100; // Minimum interval between detections (ms)
     const FACE_LOSS_TOLERANCE = 25; // Allow 25 consecutive frames (~2.5 seconds) without face before resetting
 
@@ -446,6 +452,13 @@ export default function FaceRegistrationPage() {
 
     const detectLoop = async (): Promise<void> => {
       if (!isDetectionRunning || !videoRef.current || !faceapi) return;
+      
+      // Stop detection if duplicate face was detected
+      if (duplicateFaceDetected) {
+        console.log("🚫 Detection loop stopped due to duplicate face");
+        isDetectionRunning = false;
+        return;
+      }
 
       // Throttle detection to prevent excessive processing
       const now = Date.now();
@@ -461,64 +474,88 @@ export default function FaceRegistrationPage() {
             .detectSingleFace(
               videoRef.current,
               new faceapi.TinyFaceDetectorOptions({ 
-                scoreThreshold: 0.1,  // Very low threshold - accept weak detections
-                inputSize: 160  // Smaller input = faster and more forgiving on angles
+                scoreThreshold: 0.3,  // Increased from 0.1 - must be an actual face
+                inputSize: 224  // Increased from 160 for better accuracy
               })
             )
             .withFaceLandmarks()) ?? null;
 
         if (detection) {
+          // Validate it's actually a face - must have reasonable confidence
+          if (detection.detection.score < 0.5) {
+            // Too low confidence - probably not a real face
+            if (isScanning) {
+              consecutiveNoFaceFrames++;
+              if (consecutiveNoFaceFrames >= FACE_LOSS_TOLERANCE) {
+                setIsScanning(false);
+                setScanTimer(0);
+                setStatus("⚠️ Low detection quality. Please ensure good lighting and clear face visibility.");
+                consecutiveNoFaceFrames = 0;
+              }
+            }
+            animationId = requestAnimationFrame(detectLoop);
+            return;
+          }
+          
           // Reset consecutive no-face counter when face is detected
           consecutiveNoFaceFrames = 0;
           
           // Simple detection - just check if face is detected
-          if (step === "scanning" && !isScanning) {
+          if (step === "scanning" && !isScanning && !scanningStarted) {
             // Face detected, start scanning
+            console.log("✅ Face detected! Starting timer...");
+            scanningStarted = true; // Set local flag immediately to prevent duplicate starts
             setIsScanning(true);
             setScanTimer(0);
             setStatus("📸 Face detected! Stay still for 5 seconds...");
           }
+          // Don't update status while scanning - let the timer run without interference
 
           if (step === "done" && !registering) {
-            // Check lighting before registration (throttled to once per second)
+            // Immediately proceed with registration when scan is complete
             const video = videoRef.current;
             if (video) {
-              if (now - lastLightingCheck > 1000) {
-                lastLightingCheck = now;
-                const lighting = analyzeLighting(video);
-                setLightingScore(lighting.score);
-                setLightingMessage(lighting.message);
-                
-                // Only proceed with registration if lighting is acceptable
-                if (lighting.score >= 30 && lighting.score <= 220) {
-                  isDetectionRunning = false; // Stop detection loop
-                  await registerFace(videoRef.current);
-                } else {
-                  addErrorMessage(`⚠️ ${lighting.message} Please adjust lighting before continuing.`);
-                  setStep("scanning");
-                  setProgress({ turnLeft: false, turnRight: false, holdStill: false });
-                  setScanTimer(0);
-                  setIsScanning(false);
-                  return;
-                }
+              const lighting = analyzeLighting(video);
+              setLightingScore(lighting.score);
+              setLightingMessage(lighting.message);
+              
+              console.log(`💡 Lighting check: ${lighting.score} - ${lighting.message}`);
+              
+              // Only proceed with registration if lighting is acceptable
+              if (lighting.score >= 30 && lighting.score <= 220) {
+                console.log("🎯 Starting face registration...");
+                isDetectionRunning = false; // Stop detection loop
+                await registerFace(video);
+              } else {
+                console.log("⚠️ Lighting too poor, resetting scan...");
+                addErrorMessage(`⚠️ ${lighting.message} Please adjust lighting before continuing.`);
+                scanningStarted = false; // Reset local flag
+                setStep("scanning");
+                setProgress({ turnLeft: false, turnRight: false, holdStill: false });
+                setScanTimer(0);
+                setIsScanning(false);
+                return;
               }
             }
             return; // Stop the detection loop after registration
           }
         } else {
-          // No face detected - use high tolerance to avoid resetting on brief detection failures
+          // No face detected - reset scanning
           if (isScanning) {
             consecutiveNoFaceFrames++;
             
             // Only reset if face is lost for 25 consecutive frames (~2.5 seconds)
             // This is very forgiving for mobile cameras and unstable detection
             if (consecutiveNoFaceFrames >= FACE_LOSS_TOLERANCE) {
+              scanningStarted = false; // Reset local flag
               setIsScanning(false);
               setScanTimer(0);
-              setStatus("⚠️ Face lost for too long. Please stay in frame.");
+              setStatus("⚠️ Face lost. Please position your face in the camera.");
               consecutiveNoFaceFrames = 0; // Reset counter
             }
-            // Otherwise, keep timer running even if face not detected
+          } else {
+            // Not scanning yet, update status
+            setStatus("📸 No face detected. Please position your face in the camera.");
           }
         }
       } catch (error) {
@@ -567,16 +604,19 @@ export default function FaceRegistrationPage() {
         }
       }
     };
-  }, [modelsLoaded, faceapi, step, registering, registerFace, isSecureContext, analyzeLighting, showScanAgain]);
+  }, [modelsLoaded, faceapi, step, registering, registerFace, isSecureContext, analyzeLighting, showScanAgain, duplicateFaceDetected]);
 
   // Scan timer effect
   useEffect(() => {
     if (step === "scanning" && isScanning && !registering) {
+      console.log("⏱️ Timer effect triggered! Starting interval...");
       const interval = setInterval(() => {
         setScanTimer((prev) => {
           const newTime = prev + 0.1;
+          console.log(`⏱️ Timer: ${newTime.toFixed(1)}s / ${SCAN_DURATION}s`);
           if (newTime >= SCAN_DURATION) {
             clearInterval(interval);
+            console.log("✅ Scan complete!");
             // Scan duration complete
             setProgress((p) => ({ ...p, holdStill: true }));
             setStep("done");
@@ -587,7 +627,10 @@ export default function FaceRegistrationPage() {
         });
       }, 100); // Update every 100ms for smooth progress
 
-      return () => clearInterval(interval);
+      return () => {
+        console.log("🚫 Timer effect cleanup");
+        clearInterval(interval);
+      };
     }
   }, [step, isScanning, registering]);
 
@@ -604,7 +647,9 @@ export default function FaceRegistrationPage() {
             Face Registration
           </h1>
           <p className="text-center text-gray-700 mb-4">
-            {step === "scanning" && isScanning
+            {duplicateFaceDetected
+              ? "Face already registered"
+              : step === "scanning" && isScanning
               ? `Stay in frame: ${Math.ceil(SCAN_DURATION - scanTimer)}s remaining`
               : step === "done"
               ? "Processing..."
@@ -662,7 +707,7 @@ export default function FaceRegistrationPage() {
             )}
             
             {/* Arrow Indicators - removed as we simplified the liveness check */}
-            {!cameraLoading && !processing && !registering && step === "scanning" && isScanning && (
+            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "scanning" && isScanning && (
               <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2">
                 <div className="bg-blue-500/80 text-white px-6 py-3 rounded-full text-lg font-bold">
                   {Math.ceil(SCAN_DURATION - scanTimer)}s

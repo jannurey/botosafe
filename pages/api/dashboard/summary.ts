@@ -155,30 +155,37 @@ export default async function handler(
 
     const votersByCourseFormatted = Object.values(votersByCourseMap);
 
-    // 🎓 Actual turnout (voted users) per course/year
-    const { data: turnoutByCourseRows, error: turnoutByCourseError } = await supabaseAdmin
-      .from('users')
-      .select(`
-        course, 
-        year_level,
-        votes (
-          id
-        )
-      `)
-      .eq('role', 'voter')
-      .eq('approval_status', 'approved')
-      .eq('user_status', 'active')
-      .in('course', ALLOWED_COURSES)
-      .eq('votes.election_id', election.id);
+    // 🎓 Actual turnout (voted users) per course/year - Fixed to count unique users
+    const { data: votedUsersRows, error: votedUsersError } = await supabaseAdmin
+      .from('votes')
+      .select('user_id')
+      .eq('election_id', election.id)
+      .not('user_id', 'is', null);
 
-    if (turnoutByCourseError) {
-      console.error("Supabase turnout by course query error:", turnoutByCourseError);
+    if (votedUsersError) {
+      console.error("Supabase voted users query error:", votedUsersError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Get unique voted user IDs
+    const votedUserIds = new Set(votedUsersRows?.map(row => row.user_id) || []);
+
+    // Now get course/year info for voted users
+    const { data: votedUsersInfo, error: votedUsersInfoError } = await supabaseAdmin
+      .from('users')
+      .select('course, year_level')
+      .in('id', Array.from(votedUserIds))
+      .in('course', ALLOWED_COURSES);
+
+    if (votedUsersInfoError) {
+      console.error("Supabase voted users info query error:", votedUsersInfoError);
       return res.status(500).json({ error: "Database error" });
     }
 
     // Group turnout by course and year_level
     const turnoutByCourseMap: Record<string, { course: string; year_level: number; turnout: number }> = {};
-    turnoutByCourseRows?.forEach(row => {
+    votedUsersInfo?.forEach(row => {
+      if (!row.course || !row.year_level) return;
       const key = `${row.course}_${row.year_level}`;
       if (!turnoutByCourseMap[key]) {
         turnoutByCourseMap[key] = {
@@ -187,10 +194,7 @@ export default async function handler(
           turnout: 0
         };
       }
-      // Count votes for this user
-      if (row.votes && Array.isArray(row.votes)) {
-        turnoutByCourseMap[key].turnout += row.votes.length;
-      }
+      turnoutByCourseMap[key].turnout++;
     });
 
     const turnoutByCourseFormatted = Object.values(turnoutByCourseMap);

@@ -148,7 +148,7 @@ const AdminDashboard: React.FC = () => {
   };
   const voterTicks = makeVoterTicks(totalVoters);
 
-  // --- Predictive Analytics ---
+  // --- Predictive Analytics (Fixed to analyze per position) ---
   const voterTurnout: number =
     summary && summary.voters > 0 ? (summary.voted / summary.voters) * 100 : 0;
 
@@ -162,40 +162,86 @@ const AdminDashboard: React.FC = () => {
     } else if (voterTurnout >= 50) {
       participationPrediction = "Moderate Participation";
       participationColor = "#FFB300"; // yellow
-    } else {
+    } else if (voterTurnout >= 1) {
       participationPrediction = "Low Participation";
       participationColor = "#D32F2F"; // red
     }
   }
 
-  let competitionPrediction = "";
-  if (results.length > 1) {
-    const sorted = [...results].sort((a, b) => b.vote_count - a.vote_count);
-    const top = sorted[0].vote_count;
-    const second = sorted[1].vote_count;
-    const totalVotes = sorted.reduce((sum, c) => sum + c.vote_count, 0);
-    const leadPercent =
-      totalVotes > 0 ? ((top - second) / totalVotes) * 100 : 0;
-
-    if (leadPercent >= 20) {
-      competitionPrediction = "High Chance of Winning";
-    } else if (leadPercent < 5) {
-      competitionPrediction = "Tight Race / Close Competition";
-    } else {
-      competitionPrediction = "Moderate Lead";
+  // Competition prediction - analyze EACH position separately
+  const competitionAnalysis: { position: string; prediction: string; color: string }[] = [];
+  
+  Object.keys(groupedResults).forEach(position => {
+    const positionResults = groupedResults[position];
+    if (!positionResults || positionResults.length === 0) {
+      competitionAnalysis.push({
+        position,
+        prediction: "No candidates yet",
+        color: "#9E9E9E"
+      });
+      return;
     }
-  } else if (results.length === 1) {
-    competitionPrediction = "Only one candidate registered";
-  } else {
-    competitionPrediction = "No candidates registered yet";
-  }
 
-  // Example of previous turnout (placeholder)
-  const previousTurnout = 70;
-  const decline = previousTurnout - voterTurnout;
-  if (decline > 15 && summary && summary.voters > 0) {
-    participationPrediction = "Decline in Voter Engagement";
-    participationColor = "#D32F2F";
+    if (positionResults.length === 1) {
+      competitionAnalysis.push({
+        position,
+        prediction: "Uncontested (1 candidate)",
+        color: "#1976D2"
+      });
+      return;
+    }
+
+    const sorted = [...positionResults].sort((a, b) => b.vote_count - a.vote_count);
+    const totalVotesInPosition = sorted.reduce((sum, c) => sum + c.vote_count, 0);
+
+    if (totalVotesInPosition === 0) {
+      competitionAnalysis.push({
+        position,
+        prediction: "No votes yet",
+        color: "#9E9E9E"
+      });
+      return;
+    }
+
+    const top = sorted[0].vote_count;
+    const second = sorted[1]?.vote_count || 0;
+    const leadPercent = totalVotesInPosition > 0 ? ((top - second) / totalVotesInPosition) * 100 : 0;
+
+    let prediction = "";
+    let color = "";
+
+    if (leadPercent >= 30) {
+      prediction = "Clear Leader";
+      color = "#4CAF50";
+    } else if (leadPercent >= 15) {
+      prediction = "Moderate Lead";
+      color = "#FFB300";
+    } else if (leadPercent >= 5) {
+      prediction = "Close Race";
+      color = "#FF9800";
+    } else {
+      prediction = "Tight Competition";
+      color = "#D32F2F";
+    }
+
+    competitionAnalysis.push({ position, prediction, color });
+  });
+
+  // Overall election trend
+  let overallTrend = "Awaiting data...";
+  if (competitionAnalysis.length > 0) {
+    const tightRaces = competitionAnalysis.filter(a => 
+      a.prediction.includes("Tight") || a.prediction.includes("Close")
+    ).length;
+    const clearLeaders = competitionAnalysis.filter(a => a.prediction.includes("Clear")).length;
+
+    if (tightRaces > competitionAnalysis.length / 2) {
+      overallTrend = "Highly Competitive Election";
+    } else if (clearLeaders > competitionAnalysis.length / 2) {
+      overallTrend = "Clear Frontrunners Emerging";
+    } else {
+      overallTrend = "Mixed Competition Levels";
+    }
   }
 
   return (
@@ -205,6 +251,38 @@ const AdminDashboard: React.FC = () => {
           {summary.election.title} <span className="text-gray-600">({summary.election.status.toUpperCase()})</span>
         </h1>
       )}
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <a 
+          href="/admin/voters" 
+          className="bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
+        >
+          <div className="text-2xl mb-2">👥</div>
+          <div className="text-sm font-semibold">Manage Voters</div>
+        </a>
+        <a 
+          href="/admin/candidates" 
+          className="bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
+        >
+          <div className="text-2xl mb-2">🏆</div>
+          <div className="text-sm font-semibold">Manage Candidates</div>
+        </a>
+        <a 
+          href="/admin/elections" 
+          className="bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
+        >
+          <div className="text-2xl mb-2">🗳️</div>
+          <div className="text-sm font-semibold">Manage Elections</div>
+        </a>
+        <a 
+          href="/admin/settings" 
+          className="bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
+        >
+          <div className="text-2xl mb-2">⚙️</div>
+          <div className="text-sm font-semibold">Settings</div>
+        </a>
+      </div>
 
       {/* --- Voter Stats --- */}
       {summary && (
@@ -291,10 +369,10 @@ const AdminDashboard: React.FC = () => {
           🔮 Predictive Analytics Summary
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-          {/* Participation */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          {/* Voter Turnout */}
           <div className="p-4 md:p-5 border-2 border-gray-200 rounded-xl hover:border-[#791010] transition-colors">
-            <h3 className="text-gray-800 font-bold text-lg mb-3">Voter Turnout</h3>
+            <h3 className="text-gray-800 font-bold text-lg mb-3">📈 Voter Turnout</h3>
             <div className="flex flex-col items-center justify-center space-y-3">
               <p
                 className="text-3xl md:text-4xl font-extrabold"
@@ -311,35 +389,96 @@ const AdminDashboard: React.FC = () => {
               >
                 {participationPrediction}
               </p>
+              <div className="text-xs text-gray-600 text-center mt-2">
+                {summary?.voted || 0} of {summary?.voters || 0} voters
+              </div>
             </div>
           </div>
 
-          {/* Competition */}
+          {/* Overall Trend */}
           <div className="p-4 md:p-5 border-2 border-gray-200 rounded-xl hover:border-[#1976D2] transition-colors">
-            <h3 className="text-gray-800 font-bold text-lg mb-3">Election Trend</h3>
+            <h3 className="text-gray-800 font-bold text-lg mb-3">🏆 Overall Trend</h3>
             <div className="flex items-center justify-center h-full">
               <p className="text-lg md:text-xl font-bold text-[#1976D2] text-center">
-                {competitionPrediction}
+                {overallTrend}
               </p>
+            </div>
+          </div>
+
+          {/* Position Analysis */}
+          <div className="p-4 md:p-5 border-2 border-gray-200 rounded-xl hover:border-[#4CAF50] transition-colors md:col-span-2 lg:col-span-1">
+            <h3 className="text-gray-800 font-bold text-lg mb-3">🎯 Position Status</h3>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {competitionAnalysis.length > 0 ? (
+                competitionAnalysis.slice(0, 5).map((analysis, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-700 font-medium truncate flex-1 mr-2">
+                      {analysis.position}
+                    </span>
+                    <span 
+                      className="text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap"
+                      style={{ 
+                        color: analysis.color,
+                        backgroundColor: `${analysis.color}20`
+                      }}
+                    >
+                      {analysis.prediction}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 text-sm text-center py-4">No position data yet</p>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Competition Details - Expandable */}
+        {competitionAnalysis.length > 5 && (
+          <details className="mt-4">
+            <summary className="cursor-pointer text-[#791010] font-semibold text-sm hover:underline">
+              View all {competitionAnalysis.length} positions
+            </summary>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+              {competitionAnalysis.slice(5).map((analysis, idx) => (
+                <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded">
+                  <span className="text-gray-700 font-medium truncate flex-1 mr-2">
+                    {analysis.position}
+                  </span>
+                  <span 
+                    className="text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap"
+                    style={{ 
+                      color: analysis.color,
+                      backgroundColor: `${analysis.color}20`
+                    }}
+                  >
+                    {analysis.prediction}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
         {/* --- Color Legend --- */}
         <div className="mt-6 md:mt-8 pt-4 md:pt-6 border-t border-gray-200">
-          <p className="text-center font-semibold text-gray-700 mb-3 md:mb-4">Participation Color Indicators</p>
+          <p className="text-center font-semibold text-gray-700 mb-3 md:mb-4">Competition Color Indicators</p>
           <div className="flex flex-wrap justify-center gap-2 md:gap-4">
             <div className="flex items-center gap-2 bg-green-50 px-2 py-1 rounded-full">
               <span className="inline-block w-2 h-2 md:w-3 md:h-3 bg-[#4CAF50] rounded-full"></span>
-              <span className="text-xs md:text-sm text-gray-700">High (≥ 80%)</span>
+              <span className="text-xs md:text-sm text-gray-700">Clear Leader</span>
             </div>
             <div className="flex items-center gap-2 bg-amber-50 px-2 py-1 rounded-full">
               <span className="inline-block w-2 h-2 md:w-3 md:h-3 bg-[#FFB300] rounded-full"></span>
-              <span className="text-xs md:text-sm text-gray-700">Moderate (50–79%)</span>
+              <span className="text-xs md:text-sm text-gray-700">Moderate Lead</span>
+            </div>
+            <div className="flex items-center gap-2 bg-orange-50 px-2 py-1 rounded-full">
+              <span className="inline-block w-2 h-2 md:w-3 md:h-3 bg-[#FF9800] rounded-full"></span>
+              <span className="text-xs md:text-sm text-gray-700">Close Race</span>
             </div>
             <div className="flex items-center gap-2 bg-red-50 px-2 py-1 rounded-full">
               <span className="inline-block w-2 h-2 md:w-3 md:h-3 bg-[#D32F2F] rounded-full"></span>
-              <span className="text-xs md:text-sm text-gray-700">Low (&lt; 50%)</span>
+              <span className="text-xs md:text-sm text-gray-700">Tight</span>
             </div>
           </div>
         </div>

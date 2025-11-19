@@ -4,6 +4,7 @@ const { createServer: createHttpsServer } = require("https");
 const next = require("next");
 const { parse } = require("url");
 const fs = require("fs");
+const os = require("os");
 
 // Memory monitoring
 require('./scripts/memory-monitor');
@@ -15,6 +16,22 @@ const handle = app.getRequestHandler();
 
 // Set memory limits for the server
 require('v8').setFlagsFromString('--max-old-space-size=4096');
+
+// Get network IP address
+function getNetworkIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal and non-IPv4 addresses
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
+const networkIP = getNetworkIP();
 
 // Check if SSL certificates exist for HTTPS
 const sslOptions = {
@@ -31,7 +48,9 @@ app.prepare().then(() => {
     }).listen(port, "0.0.0.0", (err) => {
       if (err) throw err;
       console.log(`> Ready on https://localhost:${port}`);
-      console.log(`> Ready on https://10.236.18.99:${port} (Network)`);
+      console.log(`> Network: https://${networkIP}:${port}`);
+      console.log(`\n⚠️  IMPORTANT: Ensure Windows Firewall allows port ${port}`);
+      console.log(`   Run as Administrator: netsh advfirewall firewall add rule name="Next.js Dev Server" dir=in action=allow protocol=TCP localport=${port}\n`);
     });
   } else {
     // Fallback to HTTP server if no certificates found
@@ -41,7 +60,9 @@ app.prepare().then(() => {
     }).listen(port, "0.0.0.0", (err) => {
       if (err) throw err;
       console.log(`> Ready on http://localhost:${port}`);
-      console.log(`> Ready on http://10.236.18.99:${port} (Network)`);
+      console.log(`> Network: http://${networkIP}:${port}`);
+      console.log(`\n⚠️  IMPORTANT: Ensure Windows Firewall allows port ${port}`);
+      console.log(`   Run as Administrator: netsh advfirewall firewall add rule name="Next.js Dev Server" dir=in action=allow protocol=TCP localport=${port}\n`);
     });
   }
 });

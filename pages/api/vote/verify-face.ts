@@ -184,7 +184,8 @@ export default async function handler(
         ? allScores.reduce((a, b) => a + b, 0) / allScores.length
         : -1;
 
-    const isMatch = bestScore >= THRESHOLD_MATCH;
+    // Use median score for more robust verification (less susceptible to outliers)
+    const isMatch = medianScore >= THRESHOLD_MATCH;
 
     // Log event before responding
     await logFaceVerificationEvent({

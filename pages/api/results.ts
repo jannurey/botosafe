@@ -83,11 +83,13 @@ export default async function handler(
   }
 
   try {
-    // 🔹 Get elections
+    // 🔹 Get latest relevant election (ongoing or closed)
     const { data: elections, error: electionError } = await supabaseAdmin
       .from('elections')
       .select('*')
-      .order('start_time', { ascending: false });
+      .in('status', ['ongoing', 'closed'])
+      .order('start_time', { ascending: false })
+      .limit(1);
 
     if (electionError) {
       console.error("Supabase election query error:", electionError);
@@ -100,32 +102,7 @@ export default async function handler(
       return;
     }
 
-    const now = new Date();
-
-    // 🔹 Update election statuses dynamically
-    for (const e of elections) {
-      const start = new Date(e.start_time);
-      const end = new Date(e.end_time);
-      const status =
-        now < start ? "upcoming" : now <= end ? "ongoing" : "closed";
-      if (status !== e.status) {
-        const { error: updateError } = await supabaseAdmin
-          .from('elections')
-          .update({ status: status })
-          .eq('id', e.id);
-
-        if (updateError) {
-          console.error("Supabase update error:", updateError);
-        } else {
-          e.status = status;
-        }
-      }
-    }
-
-    // 🔹 Get latest relevant election
-    const election =
-      elections.find((e) => e.status === "ongoing") ||
-      elections.find((e) => e.status === "closed");
+    const election = elections[0];
 
     // If no election exists, return default values
     if (!election || !election.id) {
