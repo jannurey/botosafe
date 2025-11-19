@@ -15,7 +15,7 @@ type ProgressState = {
   holdStill: boolean;
 };
 
-type StepType = "turnLeft" | "turnRight" | "holdStill" | "done";
+type StepType = "lightingCheck" | "turnLeft" | "turnRight" | "holdStill" | "done";
 
 // ---------------- SSR Polyfill ----------------
 if (typeof window === "undefined") {
@@ -41,12 +41,13 @@ export default function FaceRegistrationPage() {
   const [status, setStatus] = useState("Initializing...");
   const [faceapi, setFaceapi] = useState<typeof FaceAPI | null>(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [step, setStep] = useState<StepType>("turnLeft"); // Start with turn left
+  const [step, setStep] = useState<StepType>("lightingCheck"); // Start with lighting check
   const [progress, setProgress] = useState<ProgressState>({
     turnLeft: false,
     turnRight: false,
     holdStill: false,
   });
+  const [lightingCheckPassed, setLightingCheckPassed] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [isSecureContext, setIsSecureContext] = useState(false);
   const [lightingScore, setLightingScore] = useState<number | null>(null);
@@ -526,6 +527,27 @@ export default function FaceRegistrationPage() {
           // Reset consecutive no-face counter when face is detected
           consecutiveNoFaceFrames = 0;
           
+          // STEP 0: Lighting check (must pass before liveness)
+          if (step === "lightingCheck" && !lightingCheckPassed) {
+            const lighting = analyzeLighting(videoRef.current);
+            setLightingScore(lighting.score);
+            setLightingMessage(lighting.message);
+            
+            // Check if lighting is acceptable
+            if (lighting.score >= 30 && lighting.score <= 220) {
+              // Lighting is good, proceed to liveness check
+              setLightingCheckPassed(true);
+              setStep("turnLeft");
+              setStatus("✅ Lighting OK! Now turn your head to the LEFT");
+            } else {
+              // Lighting is poor, keep showing guidance
+              setStatus(`⚠️ ${lighting.message}`);
+            }
+            // Don't proceed to other checks until lighting passes
+            animationId = requestAnimationFrame(detectLoop);
+            return;
+          }
+          
           // Get head yaw angle for liveness detection
           const yawAngle = calculateHeadYaw(detection.landmarks);
           
@@ -690,6 +712,8 @@ export default function FaceRegistrationPage() {
           <p className="text-center text-gray-700 mb-4">
             {duplicateFaceDetected
               ? "Face already registered"
+              : step === "lightingCheck"
+              ? "Checking lighting conditions..."
               : step === "turnLeft"
               ? "Turn your head to the LEFT"
               : step === "turnRight"
@@ -751,6 +775,21 @@ export default function FaceRegistrationPage() {
               </div>
             )}
             
+            {/* Lighting check indicator */}
+            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "lightingCheck" && (
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+                <div className="bg-yellow-500/90 text-white px-8 py-6 rounded-2xl">
+                  <div className="text-5xl mb-3">
+                    {lightingScore !== null && lightingScore < 30 ? "🌙" : 
+                     lightingScore !== null && lightingScore > 220 ? "☀️" : 
+                     "💡"}
+                  </div>
+                  <p className="text-xl font-bold mb-2">Checking Lighting</p>
+                  <p className="text-sm">{lightingMessage || "Analyzing..."}</p>
+                </div>
+              </div>
+            )}
+            
             {/* Visual indicators for head turning */}
             {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "turnLeft" && (
               <div className="absolute top-1/2 left-8 transform -translate-y-1/2">
@@ -803,6 +842,9 @@ export default function FaceRegistrationPage() {
 
           <div className="flex flex-col items-start mt-4 ml-4 text-sm">
             <div className="bg-white/90 rounded-lg shadow p-3 border border-gray-300 space-y-2">
+              <p className={lightingCheckPassed ? "text-green-600" : "text-gray-600"}>
+                {lightingCheckPassed ? "✅ Lighting Check" : "⬜ Lighting Check"}
+              </p>
               <p className={progress.turnLeft ? "text-green-600" : "text-gray-600"}>
                 {progress.turnLeft ? "✅ Turn Head Left" : "⬜ Turn Head Left"}
               </p>
@@ -815,6 +857,7 @@ export default function FaceRegistrationPage() {
             </div>
 
             <p className="mt-4 text-center w-full font-semibold text-gray-700">
+              {step === "lightingCheck" && "💡 Checking lighting conditions..."}
               {step === "turnLeft" && "⬅️ Turn your head LEFT"}
               {step === "turnRight" && "➡️ Turn your head RIGHT"}
               {step === "holdStill" && isScanning && `👁 Hold still... ${Math.ceil(SCAN_DURATION - scanTimer)}s`}

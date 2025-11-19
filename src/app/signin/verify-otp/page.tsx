@@ -129,13 +129,13 @@ export default function VerifyOtpPage() {
               // User has face, redirect to dashboard
               window.location.href = "/pages/dashboard";
             } else if (data.user.hasFace === false) {
-              // First-time user, redirect to face registration
+              // First-time user, redirect to face registration intro
               // User needs face registration
-              window.location.href = "/signin/face-register";
+              window.location.href = "/signin/face-register-intro";
             } else {
               // Handle any unexpected values
               // Unexpected value, default to registration
-              window.location.href = "/signin/face-register";
+              window.location.href = "/signin/face-register-intro";
             }
           } catch (error) {
             console.error("Error during redirect:", error);
@@ -143,7 +143,7 @@ export default function VerifyOtpPage() {
             if (data.user.hasFace === true) {
               window.location.href = "/pages/dashboard";
             } else {
-              window.location.href = "/signin/face-register";
+              window.location.href = "/signin/face-register-intro";
             }
           }
         }, 500); // Wait 500ms for cookie to be set
