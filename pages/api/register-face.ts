@@ -81,8 +81,10 @@ export default async function handler(
     }
     
     // Check if this face already exists for another user
-    // Use very high threshold to prevent duplicates while minimizing false positives
-    const SIMILARITY_THRESHOLD = 0.95; // 95% similarity required - very strict for duplicate detection
+    // Use stricter thresholds to reduce false positives
+    const DUPLICATE_BLOCK_THRESHOLD = 0.90;  // Block if ≥90% - very high confidence same person
+    const WARNING_THRESHOLD = 0.85; // Log warning but allow if 85-90%
+    const MIN_QUALITY_THRESHOLD = 0.70; // Only check embeddings with good quality
     
     if (allFaces && allFaces.length > 0) {
       for (const existingFace of allFaces) {
@@ -113,23 +115,55 @@ export default async function handler(
           }
           
           // Check similarity between new and stored embeddings
+          // Use average of best matches to reduce false positives from outliers
+          let maxSimilarity = 0;
+          let matchCount = 0;
+          
           for (const newEmb of normalizedEmbeddings) {
             for (const storedEmb of storedEmbeddings) {
               const similarity = cosineSimilarity(newEmb, storedEmb);
               
-              // If similarity exceeds threshold, reject registration
-              if (similarity >= SIMILARITY_THRESHOLD) {
-                console.log(`🚫 Duplicate face detected! Similarity: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
-                console.log(`   Threshold: ${SIMILARITY_THRESHOLD} (${(SIMILARITY_THRESHOLD * 100).toFixed(0)}%)`);
-                res.status(409).json({ 
-                  message: "This face is already registered to another account. Each person can only have one account. Please contact support if you believe this is an error." 
-                });
-                return;
-              } else if (similarity >= 0.90) {
-                // Log high similarity for monitoring (but allow registration)
-                console.log(`⚠️ High similarity: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%) with user ${existingFace.user_id} - Below ${SIMILARITY_THRESHOLD}, allowing`);
+              // Log similarity score for monitoring
+              console.log(`📊 Similarity check: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+              
+              // Track the highest similarity found
+              if (similarity > maxSimilarity) {
+                maxSimilarity = similarity;
+              }
+              
+              // Count how many comparisons show high similarity
+              if (similarity >= WARNING_THRESHOLD) {
+                matchCount++;
               }
             }
+          }
+          
+          // Only block if:
+          // 1. Maximum similarity exceeds strict threshold (90%+), OR
+          // 2. Multiple embeddings show high similarity (indicating consistent match)
+          const multipleMatches = matchCount >= 2; // At least 2 high-similarity matches
+          
+          if (maxSimilarity >= DUPLICATE_BLOCK_THRESHOLD) {
+            // Very high confidence - almost certainly the same person
+            console.log(`🚫 BLOCKED: Duplicate face detected! Max similarity: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+            console.log(`   Threshold: ${DUPLICATE_BLOCK_THRESHOLD} (${(DUPLICATE_BLOCK_THRESHOLD * 100).toFixed(0)}%)`);
+            res.status(409).json({ 
+              message: "This face is already registered to another account. Each person can only have one account. Please contact support if you believe this is an error." 
+            });
+            return;
+          } else if (maxSimilarity >= WARNING_THRESHOLD && multipleMatches) {
+            // Multiple high-similarity matches suggest same person
+            console.log(`🚫 BLOCKED: Multiple high-similarity matches detected! Max: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%), Matches: ${matchCount} with user ${existingFace.user_id}`);
+            res.status(409).json({ 
+              message: "This face appears very similar to an existing account. Please contact support if you believe this is an error." 
+            });
+            return;
+          } else if (maxSimilarity >= WARNING_THRESHOLD) {
+            // Single match above warning but below block - log and allow
+            console.log(`⚠️ WARNING: High similarity detected but allowing: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+          } else if (maxSimilarity >= MIN_QUALITY_THRESHOLD) {
+            // Moderate similarity - normal, just log for monitoring
+            console.log(`ℹ️ Moderate similarity: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id} - Allowing registration`);
           }
         } catch (parseError) {
           console.error("Error parsing stored embedding:", parseError);

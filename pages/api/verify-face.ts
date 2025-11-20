@@ -79,22 +79,41 @@ export default async function handler(
         .json({ match: false, message: "No face registered" });
     }
 
-    const storedEmbedding = toNumberArray(
-      JSON.parse(faceRows[0].face_embedding)
-    );
-    const normalizedStored = normalizeEmbedding(storedEmbedding);
-    const sim = cosineSimilarity(normalized, normalizedStored);
+    // Parse stored embedding - handle both single embedding and array of embeddings
+    const parsed = JSON.parse(faceRows[0].face_embedding);
+    const storedEmbeddings: number[][] = [];
+    
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed[0])) {
+        // Array of embeddings
+        storedEmbeddings.push(...parsed.map((e: number[]) => normalizeEmbedding(toNumberArray(e))));
+      } else {
+        // Single embedding
+        storedEmbeddings.push(normalizeEmbedding(toNumberArray(parsed)));
+      }
+    } else {
+      return res.status(200).json({ match: false, message: "Invalid stored embedding format" });
+    }
+    
+    // Compare incoming embedding against all stored embeddings
+    let maxSimilarity = 0;
+    for (const storedEmb of storedEmbeddings) {
+      const sim = cosineSimilarity(normalized, storedEmb);
+      if (sim > maxSimilarity) {
+        maxSimilarity = sim;
+      }
+    }
     
     // Log the similarity score for debugging
-    console.log(`Face verification for user ${userId}: similarity = ${sim.toFixed(4)}, threshold = ${THRESHOLD}`);
+    console.log(`Face verification for user ${userId}: similarity = ${maxSimilarity.toFixed(4)}, threshold = ${THRESHOLD}`);
 
-    if (sim < THRESHOLD) {
+    if (maxSimilarity < THRESHOLD) {
       return res
         .status(200)
         .json({ 
           match: false, 
           message: "Face not recognized",
-          bestScore: sim,
+          bestScore: maxSimilarity,
           threshold: THRESHOLD
         });
     }
@@ -125,7 +144,7 @@ export default async function handler(
         user,
         voteToken,
         message: "Face verified for voting.",
-        bestScore: sim,
+        bestScore: maxSimilarity,
         threshold: THRESHOLD
       });
     } else {
@@ -156,7 +175,7 @@ export default async function handler(
           match: true, 
           user, 
           message: "Face verified. User logged in.",
-          bestScore: sim,
+          bestScore: maxSimilarity,
           threshold: THRESHOLD
         });
     }

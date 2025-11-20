@@ -290,7 +290,7 @@ export default function FaceRegistrationPage() {
 
       try {
         const detection = await faceapi
-          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
 
@@ -305,7 +305,33 @@ export default function FaceRegistrationPage() {
           return;
         }
 
+        // Quality validation - ensure good detection score
+        const detectionScore = detection.detection.score;
+        if (detectionScore < 0.7) {
+          addErrorMessage(`❌ Face quality too low (${(detectionScore * 100).toFixed(0)}%). Please ensure good lighting and clear view of your face.`);
+          setRegistering(false);
+          setProcessing(false);
+          setStep("turnLeft");
+          setProgress({ turnLeft: false, turnRight: false, holdStill: false });
+          setScanTimer(0);
+          setIsScanning(false);
+          return;
+        }
+
+        // Verify descriptor length is correct (128 dimensions)
+        if (!detection.descriptor || detection.descriptor.length !== 128) {
+          addErrorMessage("❌ Invalid face data captured. Please try again.");
+          setRegistering(false);
+          setProcessing(false);
+          setStep("turnLeft");
+          setProgress({ turnLeft: false, turnRight: false, holdStill: false });
+          setScanTimer(0);
+          setIsScanning(false);
+          return;
+        }
+
         const embedding = Array.from(detection.descriptor);
+        console.log(`✅ High-quality face captured! Detection score: ${(detectionScore * 100).toFixed(2)}%`);
         
         // Get user ID from temporary token instead of localStorage
         const res = await fetch("/api/register-face", {
@@ -314,6 +340,9 @@ export default function FaceRegistrationPage() {
           credentials: "include", // Include cookies to access tempAuthToken
           body: JSON.stringify({ embedding }),
         });
+
+        const data: { message?: string } = await res.json();
+        console.log(`📊 Face registration response:`, { status: res.status, data });
 
         if (res.ok) {
           setSuccessMsg("✅ Face registered successfully!");
@@ -348,7 +377,6 @@ export default function FaceRegistrationPage() {
             }, 3500);
           }
         } else {
-          const data: { message?: string } = await res.json();
           if (res.status === 409) {
             // Face already registered to another account
             addErrorMessage(`🚫 ${data.message || "This face is already registered to another account."}`);
@@ -358,10 +386,7 @@ export default function FaceRegistrationPage() {
             setProcessing(false);
             setDuplicateFaceDetected(true); // Mark as duplicate to stop detection loop
             setStep("done"); // Prevent detection loop from restarting
-            // Show message for longer and redirect to login
-            setTimeout(() => {
-              window.location.href = "/signin/login";
-            }, 5000);
+            // Don't auto-redirect - let user click button to go to login
           } else {
             addErrorMessage(`❌ Registration failed: ${data.message ?? "Unknown error"}`);
             setRegistering(false); // Allow retry for other errors
@@ -753,128 +778,153 @@ export default function FaceRegistrationPage() {
             </div>
           )}
 
-          <div className="flex flex-col items-center w-full max-w-[640px] aspect-video mx-auto relative">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="rounded-lg shadow w-full h-full object-contain bg-black"
-              style={{ transform: 'scaleX(-1)' }}
-            />
-            {(cameraLoading || processing || registering) && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
-                <div className="text-center">
-                  <div className="w-16 h-16 border-4 border-t-red-600 border-gray-300 rounded-full animate-spin mx-auto mb-2"></div>
-                  <p className="text-white font-medium">
-                    {cameraLoading ? "Initializing camera..." : 
-                     processing ? "Processing face..." : 
-                     registering ? "Registering face..." : ""}
-                  </p>
-                </div>
-              </div>
-            )}
-            
-            {/* Lighting check indicator */}
-            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "lightingCheck" && (
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-                <div className="bg-yellow-500/90 text-white px-8 py-6 rounded-2xl">
-                  <div className="text-5xl mb-3">
-                    {lightingScore !== null && lightingScore < 30 ? "🌙" : 
-                     lightingScore !== null && lightingScore > 220 ? "☀️" : 
-                     "💡"}
+          {/* Only show camera if duplicate face is NOT detected */}
+          {!duplicateFaceDetected && (
+            <div className="flex flex-col items-center w-full max-w-[640px] aspect-video mx-auto relative">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="rounded-lg shadow w-full h-full object-contain bg-black"
+                style={{ transform: 'scaleX(-1)' }}
+              />
+              {(cameraLoading || processing || registering) && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
+                  <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-t-red-600 border-gray-300 rounded-full animate-spin mx-auto mb-2"></div>
+                    <p className="text-white font-medium">
+                      {cameraLoading ? "Initializing camera..." : 
+                       processing ? "Processing face..." : 
+                       registering ? "Registering face..." : ""}
+                    </p>
                   </div>
-                  <p className="text-xl font-bold mb-2">Checking Lighting</p>
-                  <p className="text-sm">{lightingMessage || "Analyzing..."}</p>
                 </div>
-              </div>
-            )}
+              )}
+              
+              {/* Lighting check indicator */}
+              {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "lightingCheck" && (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+                  <div className="bg-yellow-500/90 text-white px-8 py-6 rounded-2xl">
+                    <div className="text-5xl mb-3">
+                      {lightingScore !== null && lightingScore < 30 ? "🌙" : 
+                       lightingScore !== null && lightingScore > 220 ? "☀️" : 
+                       "💡"}
+                    </div>
+                    <p className="text-xl font-bold mb-2">Checking Lighting</p>
+                    <p className="text-sm">{lightingMessage || "Analyzing..."}</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Visual indicators for head turning */}
+              {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "turnLeft" && (
+                <div className="absolute top-1/2 left-8 transform -translate-y-1/2">
+                  <div className="bg-blue-500/80 text-white px-6 py-4 rounded-full text-4xl font-bold animate-pulse">
+                    ⬅️
+                  </div>
+                  <p className="text-white text-center mt-2 font-semibold bg-black/50 px-3 py-1 rounded">Turn LEFT</p>
+                </div>
+              )}
+              
+              {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "turnRight" && (
+                <div className="absolute top-1/2 right-8 transform -translate-y-1/2">
+                  <div className="bg-blue-500/80 text-white px-6 py-4 rounded-full text-4xl font-bold animate-pulse">
+                    ➡️
+                  </div>
+                  <p className="text-white text-center mt-2 font-semibold bg-black/50 px-3 py-1 rounded">Turn RIGHT</p>
+                </div>
+              )}
+              
+              {/* Timer and progress for hold still phase */}
+              {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "holdStill" && isScanning && (
+                <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2">
+                  <div className="bg-blue-500/80 text-white px-6 py-3 rounded-full text-lg font-bold">
+                    {Math.ceil(SCAN_DURATION - scanTimer)}s
+                  </div>
+                  {/* Progress bar */}
+                  <div className="mt-2 w-48 h-2 bg-gray-300 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-500 transition-all duration-100"
+                      style={{ width: `${(scanTimer / SCAN_DURATION) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             
-            {/* Visual indicators for head turning */}
-            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "turnLeft" && (
-              <div className="absolute top-1/2 left-8 transform -translate-y-1/2">
-                <div className="bg-blue-500/80 text-white px-6 py-4 rounded-full text-4xl font-bold animate-pulse">
-                  ⬅️
+              {/* Lighting Indicator */}
+              {lightingScore !== null && (
+                <div className="absolute top-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-xs">
+                  <div className="flex items-center">
+                    <span className="mr-2">
+                      {lightingScore < 30 ? "🌙" : 
+                       lightingScore > 220 ? "☀️" : 
+                       "💡"}
+                    </span>
+                    <span>{lightingScore}/100</span>
+                  </div>
                 </div>
-                <p className="text-white text-center mt-2 font-semibold bg-black/50 px-3 py-1 rounded">Turn LEFT</p>
-              </div>
-            )}
-            
-            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "turnRight" && (
-              <div className="absolute top-1/2 right-8 transform -translate-y-1/2">
-                <div className="bg-blue-500/80 text-white px-6 py-4 rounded-full text-4xl font-bold animate-pulse">
-                  ➡️
-                </div>
-                <p className="text-white text-center mt-2 font-semibold bg-black/50 px-3 py-1 rounded">Turn RIGHT</p>
-              </div>
-            )}
-            
-            {/* Timer and progress for hold still phase */}
-            {!duplicateFaceDetected && !cameraLoading && !processing && !registering && step === "holdStill" && isScanning && (
-              <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2">
-                <div className="bg-blue-500/80 text-white px-6 py-3 rounded-full text-lg font-bold">
-                  {Math.ceil(SCAN_DURATION - scanTimer)}s
-                </div>
-                {/* Progress bar */}
-                <div className="mt-2 w-48 h-2 bg-gray-300 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 transition-all duration-100"
-                    style={{ width: `${(scanTimer / SCAN_DURATION) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
-            
-            {/* Lighting Indicator */}
-            {lightingScore !== null && (
-              <div className="absolute top-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-xs">
-                <div className="flex items-center">
-                  <span className="mr-2">
-                    {lightingScore < 30 ? "🌙" : 
-                     lightingScore > 220 ? "☀️" : 
-                     "💡"}
-                  </span>
-                  <span>{lightingScore}/100</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col items-start mt-4 ml-4 text-sm">
-            <div className="bg-white/90 rounded-lg shadow p-3 border border-gray-300 space-y-2">
-              <p className={lightingCheckPassed ? "text-green-600" : "text-gray-600"}>
-                {lightingCheckPassed ? "✅ Lighting Check" : "⬜ Lighting Check"}
-              </p>
-              <p className={progress.turnLeft ? "text-green-600" : "text-gray-600"}>
-                {progress.turnLeft ? "✅ Turn Head Left" : "⬜ Turn Head Left"}
-              </p>
-              <p className={progress.turnRight ? "text-green-600" : "text-gray-600"}>
-                {progress.turnRight ? "✅ Turn Head Right" : "⬜ Turn Head Right"}
-              </p>
-              <p className={progress.holdStill ? "text-green-600" : "text-gray-600"}>
-                {progress.holdStill ? "✅ Hold Still (5s)" : "⬜ Hold Still (5s)"}
-              </p>
+              )}
             </div>
+          )}
 
-            <p className="mt-4 text-center w-full font-semibold text-gray-700">
-              {step === "lightingCheck" && "💡 Checking lighting conditions..."}
-              {step === "turnLeft" && "⬅️ Turn your head LEFT"}
-              {step === "turnRight" && "➡️ Turn your head RIGHT"}
-              {step === "holdStill" && isScanning && `👁 Hold still... ${Math.ceil(SCAN_DURATION - scanTimer)}s`}
-              {step === "done" && "✅ Face scan complete!"}
-            </p>
-            
-            {/* Lighting Message */}
-            {lightingMessage && (
-              <p className={`mt-2 text-center w-full text-sm ${
-                lightingMessage.includes("Optimal") ? "text-green-600" : 
-                lightingMessage.includes("bit") ? "text-yellow-600" : 
-                "text-red-600"
-              }`}>
-                {lightingMessage}
+          {/* Show placeholder when duplicate face is detected */}
+          {duplicateFaceDetected && (
+            <div className="flex flex-col items-center w-full max-w-[640px] aspect-video mx-auto relative bg-gray-100 rounded-lg shadow border-2 border-red-300">
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center p-8">
+                  <div className="text-6xl mb-4">🚫</div>
+                  <p className="text-xl font-bold text-red-600 mb-2">Face Already Registered</p>
+                  <p className="text-gray-700 mb-6">This face is already linked to another account.</p>
+                  <button
+                    onClick={() => window.location.href = "/signin/login"}
+                    className="bg-[#791010] hover:bg-[#d84141] text-white font-bold py-3 px-8 rounded-lg transition shadow-md"
+                  >
+                    Go to Login
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Only show progress indicators if duplicate face is NOT detected */}
+          {!duplicateFaceDetected && (
+            <div className="flex flex-col items-start mt-4 ml-4 text-sm">
+              <div className="bg-white/90 rounded-lg shadow p-3 border border-gray-300 space-y-2">
+                <p className={lightingCheckPassed ? "text-green-600" : "text-gray-600"}>
+                  {lightingCheckPassed ? "✅ Lighting Check" : "⬜ Lighting Check"}
+                </p>
+                <p className={progress.turnLeft ? "text-green-600" : "text-gray-600"}>
+                  {progress.turnLeft ? "✅ Turn Head Left" : "⬜ Turn Head Left"}
+                </p>
+                <p className={progress.turnRight ? "text-green-600" : "text-gray-600"}>
+                  {progress.turnRight ? "✅ Turn Head Right" : "⬜ Turn Head Right"}
+                </p>
+                <p className={progress.holdStill ? "text-green-600" : "text-gray-600"}>
+                  {progress.holdStill ? "✅ Hold Still (5s)" : "⬜ Hold Still (5s)"}
+                </p>
+              </div>
+
+              <p className="mt-4 text-center w-full font-semibold text-gray-700">
+                {step === "lightingCheck" && "💡 Checking lighting conditions..."}
+                {step === "turnLeft" && "⬅️ Turn your head LEFT"}
+                {step === "turnRight" && "➡️ Turn your head RIGHT"}
+                {step === "holdStill" && isScanning && `👁 Hold still... ${Math.ceil(SCAN_DURATION - scanTimer)}s`}
+                {step === "done" && "✅ Face scan complete!"}
               </p>
-            )}
-          </div>
+              
+              {/* Lighting Message */}
+              {lightingMessage && (
+                <p className={`mt-2 text-center w-full text-sm ${
+                  lightingMessage.includes("Optimal") ? "text-green-600" : 
+                  lightingMessage.includes("bit") ? "text-yellow-600" : 
+                  "text-red-600"
+                }`}>
+                  {lightingMessage}
+                </p>
+              )}
+            </div>
+          )}
 
           <p className="text-center mt-4 text-gray-600">{status}</p>
           
