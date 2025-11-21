@@ -11,6 +11,12 @@ function normalizeEmbedding(embedding: number[] | Float32Array): number[] {
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
+  // Ensure both vectors have the same length
+  if (a.length !== b.length) {
+    console.error(`Vector length mismatch: ${a.length} vs ${b.length}`);
+    return 0;
+  }
+  
   let dot = 0,
     normA = 0,
     normB = 0;
@@ -19,7 +25,16 @@ function cosineSimilarity(a: number[], b: number[]): number {
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  
+  // Handle edge cases
+  if (normA === 0 || normB === 0) {
+    return 0;
+  }
+  
+  const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  
+  // Ensure similarity is within valid range [-1, 1]
+  return Math.max(-1, Math.min(1, similarity));
 }
 
 // ------------------- HANDLER -------------------
@@ -67,8 +82,24 @@ export default async function handler(
       return;
     }
 
+    // Log a warning but allow registration with fewer embeddings
+    if (inputEmbeddings.length < 3) {
+      console.warn(`⚠️ Only ${inputEmbeddings.length} embeddings provided. For better duplicate detection, consider providing more samples.`);
+    }
+    
+    // Validate embedding dimensions but allow registration with warnings
+    for (const emb of inputEmbeddings) {
+      const arr = Array.from(emb);
+      if (arr.length !== 128) { // Face recognition embeddings should be 128-dimensional
+        console.warn(`⚠️ Invalid embedding dimensions: ${arr.length}. Expected 128-dimensional vectors.`);
+      }
+    }
+
     // Normalize all embeddings
     const normalizedEmbeddings = inputEmbeddings.map(emb => normalizeEmbedding(emb));
+    
+    // Log the number of embeddings for debugging
+    console.log(`📊 Processing ${normalizedEmbeddings.length} embeddings for user ${userId}`);
     
     // ✅ CHECK FOR DUPLICATE FACES ACROSS ALL USERS
     // Fetch all existing face embeddings from database
@@ -80,21 +111,39 @@ export default async function handler(
       return;
     }
     
+    // If no faces exist in the database, this is the first user - no need to check for duplicates
+    if (!allFaces || allFaces.length === 0) {
+      console.log("🆕 First user registration - no existing faces to compare against");
+    }
+    
     // Check if this face already exists for another user
-    // Use stricter thresholds to reduce false positives
-    const DUPLICATE_BLOCK_THRESHOLD = 0.90;  // Block if ≥90% - very high confidence same person
-    const WARNING_THRESHOLD = 0.85; // Log warning but allow if 85-90%
-    const MIN_QUALITY_THRESHOLD = 0.70; // Only check embeddings with good quality
+    // Use appropriate thresholds based on project specifications
+    const DUPLICATE_BLOCK_THRESHOLD = 0.85;  // High threshold - block if ≥85%
+    const WARNING_THRESHOLD = 0.75; // Medium threshold - log warning if ≥75%
+    const MIN_QUALITY_THRESHOLD = 0.65; // Low threshold - check embeddings with minimum quality
     
     if (allFaces && allFaces.length > 0) {
+      console.log(`🔍 Checking against ${allFaces.length} existing faces for duplicate detection`);
       for (const existingFace of allFaces) {
         // Skip checking against the current user's own face (if updating)
         if (existingFace.user_id === userId) {
+          console.log(`⏭️ Skipping comparison against user's own face (ID: ${userId})`);
           continue;
         }
         
         // Skip if this face has no embedding yet (new user who hasn't completed registration)
         if (!existingFace.face_embedding) {
+          continue;
+        }
+        
+        // Skip if the face embedding is invalid
+        try {
+          const parsed = JSON.parse(existingFace.face_embedding);
+          if (!parsed || (Array.isArray(parsed) && parsed.length === 0)) {
+            continue;
+          }
+        } catch (e) {
+          // Skip invalid embeddings
           continue;
         }
         
@@ -114,21 +163,58 @@ export default async function handler(
             }
           }
           
+          // Skip comparison if stored embeddings are insufficient
+          if (storedEmbeddings.length === 0) {
+            console.warn(`⚠️ No valid embeddings found for user ${existingFace.user_id}. Skipping duplicate check.`);
+            continue;
+          }
+          
           // Check similarity between new and stored embeddings
           // Use average of best matches to reduce false positives from outliers
           let maxSimilarity = 0;
+          let totalSimilarity = 0;
+          let validComparisons = 0;
           let matchCount = 0;
+          
+          // Debug: Log embedding info
+          console.log(`🔍 Comparing user ${userId} against user ${existingFace.user_id}`);
+          console.log(`   New embeddings count: ${normalizedEmbeddings.length}`);
+          console.log(`   Stored embeddings count: ${storedEmbeddings.length}`);
           
           for (const newEmb of normalizedEmbeddings) {
             for (const storedEmb of storedEmbeddings) {
+              // Debug: Log vector info
+              console.log(`   Comparing vectors of length ${newEmb.length} vs ${storedEmb.length}`);
+              
               const similarity = cosineSimilarity(newEmb, storedEmb);
               
-              // Log similarity score for monitoring
-              console.log(`📊 Similarity check: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+              // Debug: Log similarity
+              console.log(`   Similarity: ${similarity.toFixed(4)}`);
               
               // Track the highest similarity found
               if (similarity > maxSimilarity) {
                 maxSimilarity = similarity;
+              }
+              
+              // Add to total for average calculation
+              totalSimilarity += similarity;
+              validComparisons++;
+              
+              // If we get a perfect match (1.0), this might indicate we're comparing the same data
+              if (similarity === 1.0 && newEmb.length === storedEmb.length) {
+                // Check if the vectors are actually identical
+                let identical = true;
+                for (let i = 0; i < newEmb.length; i++) {
+                  if (newEmb[i] !== storedEmb[i]) {
+                    identical = false;
+                    break;
+                  }
+                }
+                
+                if (identical) {
+                  console.warn(`⚠️ Identical embeddings detected! This might indicate a data issue.`);
+                  console.warn(`   User ${userId} embedding appears to be identical to user ${existingFace.user_id} embedding`);
+                }
               }
               
               // Count how many comparisons show high similarity
@@ -138,35 +224,63 @@ export default async function handler(
             }
           }
           
-          // Only block if:
-          // 1. Maximum similarity exceeds strict threshold (90%+), OR
-          // 2. Multiple embeddings show high similarity (indicating consistent match)
-          const multipleMatches = matchCount >= 2; // At least 2 high-similarity matches
+          // Calculate average similarity
+          const averageSimilarity = validComparisons > 0 ? totalSimilarity / validComparisons : 0;
           
-          if (maxSimilarity >= DUPLICATE_BLOCK_THRESHOLD) {
-            // Very high confidence - almost certainly the same person
-            console.log(`🚫 BLOCKED: Duplicate face detected! Max similarity: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
-            console.log(`   Threshold: ${DUPLICATE_BLOCK_THRESHOLD} (${(DUPLICATE_BLOCK_THRESHOLD * 100).toFixed(0)}%)`);
+          // Count how many individual comparisons exceed the blocking threshold
+          const highConfidenceMatches = matchCount; // Already counted matches >= WARNING_THRESHOLD
+          const veryHighMatches = validComparisons > 0 ? 
+            normalizedEmbeddings.reduce((count, newEmb) => 
+              count + storedEmbeddings.filter(storedEmb => 
+                cosineSimilarity(newEmb, storedEmb) >= DUPLICATE_BLOCK_THRESHOLD
+              ).length
+            , 0) : 0;
+          
+          // Improved duplicate detection logic:
+          // Block if we have strong evidence it's the same person
+          const hasSufficientData = normalizedEmbeddings.length >= 3 && storedEmbeddings.length >= 3;
+          
+          // Strict blocking: Very high max similarity with high average
+          if (maxSimilarity >= DUPLICATE_BLOCK_THRESHOLD && averageSimilarity >= 0.70 && hasSufficientData) {
+            console.log(`🚫 BLOCKED: Duplicate face detected! Max: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%), Avg: ${averageSimilarity.toFixed(4)} (${(averageSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+            console.log(`   High confidence matches (≥${DUPLICATE_BLOCK_THRESHOLD}): ${veryHighMatches}/${validComparisons}`);
             res.status(409).json({ 
               message: "This face is already registered to another account. Each person can only have one account. Please contact support if you believe this is an error." 
             });
             return;
-          } else if (maxSimilarity >= WARNING_THRESHOLD && multipleMatches) {
-            // Multiple high-similarity matches suggest same person
-            console.log(`🚫 BLOCKED: Multiple high-similarity matches detected! Max: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%), Matches: ${matchCount} with user ${existingFace.user_id}`);
+          }
+          
+          // Medium blocking: Multiple very high similarity matches
+          if (veryHighMatches >= 3 && averageSimilarity >= 0.65) {
+            console.log(`🚫 BLOCKED: Multiple high-confidence matches! ${veryHighMatches} matches ≥${DUPLICATE_BLOCK_THRESHOLD}, Avg: ${averageSimilarity.toFixed(4)} with user ${existingFace.user_id}`);
             res.status(409).json({ 
-              message: "This face appears very similar to an existing account. Please contact support if you believe this is an error." 
+              message: "This face is already registered to another account. Each person can only have one account." 
             });
             return;
-          } else if (maxSimilarity >= WARNING_THRESHOLD) {
-            // Single match above warning but below block - log and allow
-            console.log(`⚠️ WARNING: High similarity detected but allowing: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
+          }
+          
+          // Conservative blocking: Extremely high max similarity even with less data
+          if (maxSimilarity >= 0.90 && averageSimilarity >= 0.70) {
+            console.log(`🚫 BLOCKED: Extremely high similarity! Max: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%), Avg: ${averageSimilarity.toFixed(4)} with user ${existingFace.user_id}`);
+            res.status(409).json({ 
+              message: "This face is already registered to another account." 
+            });
+            return;
+          }
+          
+          // Log warnings for high similarity that doesn't meet blocking criteria
+          if (maxSimilarity >= WARNING_THRESHOLD) {
+            // Single match above warning threshold - log and allow
+            console.log(`⚠️ WARNING: Medium similarity detected but allowing: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id}`);
           } else if (maxSimilarity >= MIN_QUALITY_THRESHOLD) {
-            // Moderate similarity - normal, just log for monitoring
-            console.log(`ℹ️ Moderate similarity: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id} - Allowing registration`);
+            // Low similarity - normal, just log for monitoring
+            console.log(`ℹ️ Low similarity: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id} - Allowing registration`);
+          } else {
+            // Very low similarity - normal variation
+            console.log(`✅ Very low similarity: ${maxSimilarity.toFixed(4)} (${(maxSimilarity * 100).toFixed(2)}%) with user ${existingFace.user_id} - Allowing registration`);
           }
         } catch (parseError) {
-          console.error("Error parsing stored embedding:", parseError);
+          console.error(`Error parsing stored embedding for user ${existingFace.user_id}:`, parseError);
           // Continue checking other faces even if one fails to parse
           continue;
         }

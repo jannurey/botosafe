@@ -285,64 +285,115 @@ export default function FaceRegistrationPage() {
       if (!faceapi) return;
       setRegistering(true);
       setProcessing(true);
-      setStatus("🧠 Capturing and saving your face...");
+      setStatus("🧠 Capturing multiple face samples...");
       clearErrorMessages();
 
+      // Capture multiple face samples
+      const embeddings: number[][] = [];
+      const maxSamples = 5; // Capture up to 5 samples
+      let samplesCaptured = 0;
+      
+      // Capture multiple samples with a short delay between each
+      while (samplesCaptured < maxSamples) {
+        try {
+          const detection = await faceapi
+            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (!detection) {
+            // If we have at least 3 samples, proceed with registration
+            if (samplesCaptured >= 3) {
+              break;
+            }
+            // Otherwise wait and try again
+            await new Promise(resolve => setTimeout(resolve, 200));
+            continue;
+          }
+
+          // Quality validation - ensure good detection score
+          const detectionScore = detection.detection.score;
+          if (detectionScore < 0.7) {
+            // If we have at least 3 samples, proceed with registration
+            if (samplesCaptured >= 3) {
+              break;
+            }
+            // Otherwise wait and try again
+            await new Promise(resolve => setTimeout(resolve, 200));
+            continue;
+          }
+
+          // Verify descriptor length is correct (128 dimensions)
+          if (!detection.descriptor || detection.descriptor.length !== 128) {
+            // If we have at least 3 samples, proceed with registration
+            if (samplesCaptured >= 3) {
+              break;
+            }
+            // Otherwise wait and try again
+            await new Promise(resolve => setTimeout(resolve, 200));
+            continue;
+          }
+
+          const embedding = Array.from(detection.descriptor);
+          embeddings.push(embedding);
+          samplesCaptured++;
+          setStatus(`🧠 Captured sample ${samplesCaptured}/${maxSamples}...`);
+          
+          // Provide user feedback
+          if (samplesCaptured === 1) {
+            addErrorMessage("✅ First sample captured. Keep your head still for more samples...");
+          } else if (samplesCaptured === maxSamples) {
+            addErrorMessage("✅ All samples captured! Processing...");
+          }
+          
+          // Small delay between captures to get different angles/expressions
+          if (samplesCaptured < maxSamples) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        } catch (captureError) {
+          console.error("Error capturing face sample:", captureError);
+          // If we have at least 3 samples, proceed with registration
+          if (samplesCaptured >= 3) {
+            break;
+          }
+          // Otherwise wait and try again
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      // Ensure we have at least 3 samples
+      if (embeddings.length < 3) {
+        addErrorMessage(`❌ Only ${embeddings.length} valid face samples captured. Minimum 3 required.`);
+        setRegistering(false);
+        setProcessing(false);
+        setStep("turnLeft");
+        setProgress({ turnLeft: false, turnRight: false, holdStill: false });
+        setScanTimer(0);
+        setIsScanning(false);
+        return;
+      }
+      
+      console.log(`✅ ${embeddings.length} high-quality face samples captured!`);
+      
+      // Get user ID from temporary token instead of localStorage
       try {
-        const detection = await faceapi
-          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (!detection) {
-          addErrorMessage("❌ No face detected. Please try again.");
-          setRegistering(false);
-          setProcessing(false);
-          setStep("turnLeft");
-          setProgress({ turnLeft: false, turnRight: false, holdStill: false });
-          setScanTimer(0);
-          setIsScanning(false);
-          return;
-        }
-
-        // Quality validation - ensure good detection score
-        const detectionScore = detection.detection.score;
-        if (detectionScore < 0.7) {
-          addErrorMessage(`❌ Face quality too low (${(detectionScore * 100).toFixed(0)}%). Please ensure good lighting and clear view of your face.`);
-          setRegistering(false);
-          setProcessing(false);
-          setStep("turnLeft");
-          setProgress({ turnLeft: false, turnRight: false, holdStill: false });
-          setScanTimer(0);
-          setIsScanning(false);
-          return;
-        }
-
-        // Verify descriptor length is correct (128 dimensions)
-        if (!detection.descriptor || detection.descriptor.length !== 128) {
-          addErrorMessage("❌ Invalid face data captured. Please try again.");
-          setRegistering(false);
-          setProcessing(false);
-          setStep("turnLeft");
-          setProgress({ turnLeft: false, turnRight: false, holdStill: false });
-          setScanTimer(0);
-          setIsScanning(false);
-          return;
-        }
-
-        const embedding = Array.from(detection.descriptor);
-        console.log(`✅ High-quality face captured! Detection score: ${(detectionScore * 100).toFixed(2)}%`);
-        
-        // Get user ID from temporary token instead of localStorage
         const res = await fetch("/api/register-face", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include", // Include cookies to access tempAuthToken
-          body: JSON.stringify({ embedding }),
+          body: JSON.stringify({ embeddings }),
         });
 
         const data: { message?: string } = await res.json();
         console.log(`📊 Face registration response:`, { status: res.status, data });
+        
+        // Handle network errors
+        if (!res.ok && res.status === 0) {
+          addErrorMessage("❌ Network error. Please check your connection and try again.");
+          setRegistering(false);
+          setProcessing(false);
+          return;
+        }
 
         if (res.ok) {
           setSuccessMsg("✅ Face registered successfully!");
@@ -379,7 +430,8 @@ export default function FaceRegistrationPage() {
         } else {
           if (res.status === 409) {
             // Face already registered to another account
-            addErrorMessage(`🚫 ${data.message || "This face is already registered to another account."}`);
+            addErrorMessage(`🚫 ${data.message || "This face is already registered to another account. Each person can only have one account."}`);
+            console.log("Face registration blocked: Duplicate face detected");
             stopCamera(); // Stop camera when face is already registered
             setShowScanAgain(false); // Don't allow scan again for duplicate faces
             setRegistering(false);
@@ -387,6 +439,15 @@ export default function FaceRegistrationPage() {
             setDuplicateFaceDetected(true); // Mark as duplicate to stop detection loop
             setStep("done"); // Prevent detection loop from restarting
             // Don't auto-redirect - let user click button to go to login
+          } else if (res.status === 400) {
+            // Bad request - invalid data
+            addErrorMessage(`❌ ${data.message || "Invalid face data. Please try again."}`);
+            setRegistering(false);
+            setProcessing(false);
+            setStep("turnLeft"); // Reset to first step for retry
+            setProgress({ turnLeft: false, turnRight: false, holdStill: false });
+            setScanTimer(0);
+            setIsScanning(false);
           } else {
             addErrorMessage(`❌ Registration failed: ${data.message ?? "Unknown error"}`);
             setRegistering(false); // Allow retry for other errors
