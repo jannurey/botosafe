@@ -65,9 +65,9 @@ export default async function handler(
           const parsed = JSON.parse(existingFace.face_embedding);
           if (Array.isArray(parsed) && parsed.length > 0) {
             if (Array.isArray(parsed[0])) {
-              storedEmbeddings.push(...parsed.map(normalizeEmbedding));
+              storedEmbeddings = parsed.map(normalizeEmbedding);
             } else {
-              storedEmbeddings.push(normalizeEmbedding(parsed));
+              storedEmbeddings = [normalizeEmbedding(parsed)];
             }
           }
         } catch (e) {
