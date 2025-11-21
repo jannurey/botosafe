@@ -377,12 +377,19 @@ export default function FaceRegistrationPage() {
       
       // Get user ID from temporary token instead of localStorage
       try {
+        // Add timeout for the fetch request (30 seconds)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
         const res = await fetch("/api/register-face", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include", // Include cookies to access tempAuthToken
           body: JSON.stringify({ embeddings }),
+          signal: controller.signal,
         });
+        
+        clearTimeout(timeoutId);
 
         const data: { message?: string } = await res.json();
         console.log(`📊 Face registration response:`, { status: res.status, data });
@@ -439,6 +446,15 @@ export default function FaceRegistrationPage() {
             setDuplicateFaceDetected(true); // Mark as duplicate to stop detection loop
             setStep("done"); // Prevent detection loop from restarting
             // Don't auto-redirect - let user click button to go to login
+          } else if (res.status === 504) {
+            // Gateway timeout - server took too long
+            addErrorMessage(`⚠️ ${data.message || "Request timeout. The server is processing too many faces. Please try again in a moment."}`);
+            setRegistering(false);
+            setProcessing(false);
+            setStep("turnLeft"); // Reset to first step for retry
+            setProgress({ turnLeft: false, turnRight: false, holdStill: false });
+            setScanTimer(0);
+            setIsScanning(false);
           } else if (res.status === 400) {
             // Bad request - invalid data
             addErrorMessage(`❌ ${data.message || "Invalid face data. Please try again."}`);
@@ -460,7 +476,12 @@ export default function FaceRegistrationPage() {
         }
       } catch (err) {
         console.error(err);
-        addErrorMessage("⚠️ Registration failed. Please try again.");
+        // Check if it's an abort error (timeout)
+        if (err instanceof Error && err.name === 'AbortError') {
+          addErrorMessage("⚠️ Request timeout. The server is taking too long to respond. Please try again.");
+        } else {
+          addErrorMessage("⚠️ Registration failed. Please try again.");
+        }
         setRegistering(false);
         setProcessing(false);
         setStep("turnLeft"); // Reset to first step for retry
@@ -934,7 +955,7 @@ export default function FaceRegistrationPage() {
             <div className="flex flex-col items-center w-full max-w-[640px] aspect-video mx-auto relative bg-gray-100 rounded-lg shadow border-2 border-red-300">
               <div className="flex items-center justify-center h-full">
                 <div className="text-center p-8">
-                  <div className="text-6xl mb-4">🚫</div>
+                  <div className="text-6xl mb-4 hidden md:block">🚫</div>
                   <p className="text-xl font-bold text-red-600 mb-2">Face Already Registered</p>
                   <p className="text-gray-700 mb-6">This face is already linked to another account.</p>
                   <button
@@ -987,7 +1008,10 @@ export default function FaceRegistrationPage() {
             </div>
           )}
 
-          <p className="text-center mt-4 text-gray-600">{status}</p>
+          {/* Status message - hide when duplicate face is detected */}
+          {!duplicateFaceDetected && (
+            <p className="text-center mt-4 text-gray-600">{status}</p>
+          )}
           
           {/* Add Scan Again button that appears when showScanAgain is true */}
           {showScanAgain && (
