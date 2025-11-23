@@ -4,6 +4,11 @@ import crypto from "crypto";
 import transporter from "@/lib/nodemailer";
 import { supabaseAdmin } from "@/configs/supabase";
 
+// Simple in-memory rate limiting (in production, use Redis or similar)
+const rateLimit = new Map<string, { count: number; lastRequest: number }>();
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_MAX = 3; // Max 3 requests per window
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -14,6 +19,38 @@ export default async function handler(
   const { email } = req.body || {};
   if (!email || typeof email !== "string")
     return res.status(400).json({ message: "Email is required" });
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email))
+    return res.status(400).json({ message: "Invalid email format" });
+
+  // Rate limiting
+  const clientIP = (req.headers["x-forwarded-for"] ||
+    req.connection.remoteAddress ||
+    req.socket.remoteAddress ||
+    "unknown") as string;
+  
+  const key = `${clientIP}:${email}`;
+  const now = Date.now();
+  const requestData = rateLimit.get(key) || { count: 0, lastRequest: 0 };
+
+  // Reset count if window has passed
+  if (now - requestData.lastRequest > RATE_LIMIT_WINDOW) {
+    requestData.count = 0;
+  }
+
+  // Check if limit exceeded
+  if (requestData.count >= RATE_LIMIT_MAX) {
+    return res.status(429).json({ 
+      message: "Too many requests. Please try again later." 
+    });
+  }
+
+  // Update rate limit data
+  requestData.count += 1;
+  requestData.lastRequest = now;
+  rateLimit.set(key, requestData);
 
   try {
     const { data: users, error: userError } = await supabaseAdmin
@@ -35,19 +72,23 @@ export default async function handler(
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
 
-    // Upsert into password_resets
-    const { error: upsertError } = await supabaseAdmin
+    // First, try to delete any existing reset tokens for this user
+    await supabaseAdmin
       .from('password_resets')
-      .upsert({
+      .delete()
+      .eq('user_id', user.id);
+
+    // Then insert the new reset token
+    const { error: insertError } = await supabaseAdmin
+      .from('password_resets')
+      .insert({
         user_id: user.id,
         token_hash: tokenHash,
         expires_at: expiresAt.toISOString()
-      }, {
-        onConflict: 'user_id'
       });
 
-    if (upsertError) {
-      console.error("Supabase upsert error:", upsertError);
+    if (insertError) {
+      console.error("Supabase insert error:", insertError);
       return res.status(500).json({ message: "Database error" });
     }
 
@@ -75,9 +116,16 @@ export default async function handler(
       user.email
     )}`;
 
+    // Define sender - use EMAIL_FROM if available, otherwise fallback to EMAIL_USER
+    const sender = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+    const senderName = process.env.APP_NAME || "BotoSafe";
+    const fromAddress = senderName && sender 
+      ? `"${senderName}" <${sender}>` 
+      : sender || "no-reply@botosafe.com";
+
     // Send email using your lib/nodemailer transporter
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      from: fromAddress,
       to: user.email,
       subject: "Password reset request",
       text: `You requested a password reset. Use the link below to reset your password:

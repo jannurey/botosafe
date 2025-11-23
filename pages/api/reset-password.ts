@@ -4,6 +4,17 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/configs/supabase";
 
+interface User {
+  email: string;
+}
+
+interface ResetRow {
+  id: number;
+  user_id: number;
+  expires_at: string;
+  users: User | User[] | null;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -15,7 +26,18 @@ export default async function handler(
   if (!token || !password || !email)
     return res
       .status(400)
-      .json({ message: "token, email and password are required" });
+      .json({ message: "Token, email and password are required" });
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ message: "Invalid email format" });
+  }
+
+  // Validate password strength
+  if (password.length < 8) {
+    return res.status(400).json({ message: "Password must be at least 8 characters long" });
+  }
 
   try {
     const tokenHash = crypto
@@ -42,9 +64,25 @@ export default async function handler(
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
-    const row = resetRows;
+    const row: ResetRow = resetRows;
     if (new Date(row.expires_at).getTime() < Date.now()) {
       return res.status(400).json({ message: "Token has expired" });
+    }
+
+    // Verify that the email matches the token's user
+    // Handle both object and array responses from Supabase
+    let userEmail: string | null = null;
+    
+    if (Array.isArray(row.users)) {
+      if (row.users.length > 0 && row.users[0].email) {
+        userEmail = row.users[0].email;
+      }
+    } else if (row.users && (row.users as User).email) {
+      userEmail = (row.users as User).email;
+    }
+      
+    if (!userEmail || userEmail !== email) {
+      return res.status(400).json({ message: "Invalid token for this email" });
     }
 
     // Hash the new password (match the hashing used elsewhere in your app)
@@ -72,7 +110,7 @@ export default async function handler(
       // Continue anyway since the password was updated
     }
 
-    return res.status(200).json({ message: "Password has been updated" });
+    return res.status(200).json({ message: "Password has been updated successfully" });
   } catch (err) {
     console.error("reset-password error:", err);
     return res.status(500).json({ message: "Server error" });

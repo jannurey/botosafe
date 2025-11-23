@@ -81,9 +81,9 @@ const ResetPasswordPage = () => {
       } else {
         setStatus({
           type: "success",
-          message: "Password reset. Redirecting to login...",
+          message: "Password reset successfully. Redirecting to login...",
         });
-        setTimeout(() => router.push("/signin/login"), 1500);
+        setTimeout(() => router.push("/signin/login"), 3000);
       }
     } catch (err) {
       setStatus({ type: "error", message: "Network error." });
