@@ -175,13 +175,52 @@ export default function AdminCandidatesPage() {
   };
 
   const openModal = (fileUrl: string) => {
-    // Instead of opening in a modal, open in a new tab
-    // For Cloudinary files, use our proxy to avoid CORS issues
-    if (fileUrl.startsWith('https://res.cloudinary.com/')) {
-      window.open(`/api/proxy-file?url=${encodeURIComponent(fileUrl)}`, '_blank');
-    } else {
-      window.open(fileUrl, '_blank');
+    // For locally stored files, use our serve-file endpoint
+    if (fileUrl.startsWith('/uploads/candidates/')) {
+      // Extract filename from URL
+      const fileName = fileUrl.split('/').pop();
+      if (fileName) {
+        const serveUrl = `/api/serve-file?file=${encodeURIComponent(fileName)}`;
+        window.open(serveUrl, '_blank');
+        return;
+      }
     }
+    
+    // For Cloudinary files, redirect to our local serving endpoint
+    if (fileUrl.startsWith('https://res.cloudinary.com/')) {
+      // Extract the filename from the Cloudinary URL
+      // Cloudinary URL format: https://res.cloudinary.com/[cloud_name]/[resource_type]/upload/[version]/[folder]/[filename]
+      try {
+        const urlParts = fileUrl.split('/');
+        const fileName = urlParts[urlParts.length - 1];
+        if (fileName) {
+          // For PDF files, we'll need to migrate them to local storage
+          // For now, we can still try to open them with the attachment flag
+          if (fileUrl.toLowerCase().endsWith('.pdf')) {
+            let pdfUrl = fileUrl;
+            if (fileUrl.includes('/upload/') && !fileUrl.includes('fl_attachment:false')) {
+              // Add the attachment flag to prevent forced download
+              if (fileUrl.includes('/raw/upload/')) {
+                pdfUrl = fileUrl.replace('/raw/upload/', '/raw/upload/fl_attachment:false/');
+              } else {
+                pdfUrl = fileUrl.replace('/upload/', '/upload/fl_attachment:false/');
+              }
+            }
+            window.open(pdfUrl, '_blank');
+            return;
+          } else {
+            // For other file types, use proxy
+            window.open(`/api/proxy-file?url=${encodeURIComponent(fileUrl)}`, '_blank');
+            return;
+          }
+        }
+      } catch (e) {
+        // If parsing fails, fall through to default behavior
+      }
+    }
+    
+    // Default behavior for other URLs
+    window.open(fileUrl, '_blank');
   };
 
   // Add function to view candidate details
@@ -591,7 +630,11 @@ export default function AdminCandidatesPage() {
                         <span>Preview COC</span>
                       </button>
                       <a
-                        href={viewCandidate.coc_file_url}
+                        href={viewCandidate.coc_file_url?.startsWith('/uploads/candidates/') 
+                          ? `/api/serve-file?file=${encodeURIComponent(viewCandidate.coc_file_url.split('/').pop() || '')}`
+                          : viewCandidate.coc_file_url?.startsWith('https://res.cloudinary.com/')
+                          ? viewCandidate.coc_file_url
+                          : viewCandidate.coc_file_url}
                         download
                         className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition-all duration-200 text-sm font-medium flex items-center justify-center gap-2 text-center"
                       >

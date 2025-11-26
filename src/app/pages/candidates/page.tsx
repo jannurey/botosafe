@@ -49,6 +49,10 @@ export default function CandidatesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isFilingModalOpen, setIsFilingModalOpen] = useState(false);
 
+  // Add state for photo modal
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [photoModalUrl, setPhotoModalUrl] = useState("");
+
   // form fields
   const [selectedPositionId, setSelectedPositionId] = useState("");
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -73,6 +77,21 @@ export default function CandidatesPage() {
   const [partylists, setPartylists] = useState<{ id: number; name: string }[]>([]);
   const [selectedPartylistId, setSelectedPartylistId] = useState("");
   const [partylistInput, setPartylistInput] = useState(""); // For custom partylist input
+
+  // Add state for success notification
+  const [showSuccessNotification, setShowSuccessNotification] = useState(false);
+
+  // Add function to open photo in modal
+  const openPhotoModal = (photoUrl: string) => {
+    setPhotoModalUrl(photoUrl);
+    setPhotoModalOpen(true);
+  };
+
+  // Add function to close photo modal
+  const closePhotoModal = () => {
+    setPhotoModalOpen(false);
+    setPhotoModalUrl("");
+  };
 
   // --- focus trap for modal ---
   useEffect(() => {
@@ -357,7 +376,16 @@ export default function CandidatesPage() {
       });
 
       if (res.ok) {
-        setIsFilingModalOpen(false);
+        // Show success notification
+        setShowSuccessNotification(true);
+        
+        // Close the modal after a short delay
+        setTimeout(() => {
+          setIsFilingModalOpen(false);
+          setShowSuccessNotification(false);
+        }, 3000);
+        
+        // Reset form fields
         setSelectedPositionId("");
         setAchievements([]);
         setPartylist("");
@@ -365,6 +393,7 @@ export default function CandidatesPage() {
         setPhotoUrl("");
         setCocFile(null);
 
+        // Refresh candidate data
         fetch("/api/candidates")
           .then((res) => res.json())
           .then((data: Candidate[]) => {
@@ -435,6 +464,25 @@ export default function CandidatesPage() {
         <Header />
 
         <div className="relative z-10 p-4 max-w-7xl mx-auto">
+          {/* Success Notification */}
+          <AnimatePresence>
+            {showSuccessNotification && (
+              <motion.div
+                initial={{ opacity: 0, y: -50 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -50 }}
+                className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
+              >
+                <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg flex items-center">
+                  <span className="text-xl mr-2">✅</span>
+                  <span className="font-medium">
+                    Candidacy application submitted successfully! Waiting for admin approval.
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Top */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
             <div>
@@ -510,6 +558,10 @@ export default function CandidatesPage() {
                           src={c.photo_url || "/images/default-avatar.png"}
                           alt={c.fullname}
                           className="absolute inset-0 w-full h-full object-cover"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPhotoModal(c.photo_url || "/images/default-avatar.png");
+                          }}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                         <div className="absolute left-4 bottom-3 text-white">
@@ -570,7 +622,8 @@ export default function CandidatesPage() {
                               "/images/default-avatar.png"
                             }
                             alt={selectedCandidate.fullname}
-                            className="w-20 h-20 object-cover rounded-full border-2 border-white"
+                            className="w-20 h-20 object-cover rounded-full border-2 border-white cursor-pointer"
+                            onClick={() => openPhotoModal(selectedCandidate.photo_url || "/images/default-avatar.png")}
                           />
                           {selectedCandidate.partylist && (
                             <div className="absolute -bottom-1 -right-1 bg-white text-[#791010] text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
@@ -690,336 +743,434 @@ export default function CandidatesPage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
 
-        {/* Filing Modal */}
-        <AnimatePresence>
-          {isFilingModalOpen && latestElection && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-              aria-modal="true"
-              role="dialog"
-            >
+          {/* Filing Modal */}
+          <AnimatePresence>
+            {isFilingModalOpen && latestElection && (
               <motion.div
-                ref={modalRef}
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="relative w-full max-w-2xl bg-gradient-to-br from-white/90 via-pink-50 to-red-50 backdrop-blur-lg border border-white/60 rounded-2xl shadow-2xl overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                aria-modal="true"
+                role="dialog"
               >
-                {/* Modal Header */}
-                <div className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white font-semibold text-lg">
-                  <h2>File Candidacy — {latestElection.title}</h2>
-                  <button 
-                    onClick={() => setIsFilingModalOpen(false)} 
-                    className="hover:opacity-80 transition text-xl"
-                  >
-                    ✕
-                  </button>
-                </div>
+                <motion.div
+                  ref={modalRef}
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="relative w-full max-w-2xl bg-gradient-to-br from-white/90 via-pink-50 to-red-50 backdrop-blur-lg border border-white/60 rounded-2xl shadow-2xl overflow-hidden"
+                >
+                  {/* Modal Header */}
+                  <div className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white font-semibold text-lg">
+                    <h2>File Candidacy — {latestElection.title}</h2>
+                    <button 
+                      onClick={() => setIsFilingModalOpen(false)} 
+                      className="hover:opacity-80 transition text-xl"
+                    >
+                      ✕
+                    </button>
+                  </div>
 
-                {/* Modal Content */}
-                <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                  {alreadyFiled ? (
-                    <div className="text-center py-8">
-                      <div className="text-4xl mb-4">✅</div>
-                      <p className="text-gray-700 mb-6">
-                        You have already filed your candidacy for this election.
-                      </p>
-                      <button
-                        onClick={() => setIsFilingModalOpen(false)}
-                        className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 transition"
-                      >
-                        Close
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      {formError && (
-                        <div className="p-3 mb-4 bg-red-100 text-red-700 text-sm rounded-lg border border-red-200">
-                          {formError}
+                  {/* Modal Content */}
+                  <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    {alreadyFiled ? (
+                      <div className="text-center py-8">
+                        <div className="text-4xl mb-4">✅</div>
+                        <p className="text-gray-700 mb-6">
+                          You have already filed your candidacy for this election.
+                        </p>
+                        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-lg mb-6">
+                          <p className="font-medium">Status: Pending Admin Approval</p>
+                          <p className="text-sm mt-1">
+                            Your application is currently under review by administrators. 
+                            You will be notified once a decision has been made.
+                          </p>
                         </div>
-                      )}
+                        <button
+                          onClick={() => setIsFilingModalOpen(false)}
+                          className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 transition"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {formError && (
+                          <div className="p-3 mb-4 bg-red-100 text-red-700 text-sm rounded-lg border border-red-200">
+                            {formError}
+                          </div>
+                        )}
 
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-sm font-medium text-gray-600 block mb-1">
-                            Position
-                          </label>
-                          <select
-                            value={selectedPositionId}
-                            onChange={(e) => setSelectedPositionId(e.target.value)}
-                            aria-label="Select position"
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm text-gray-700"
-                          >
-                            <option value="" className="text-gray-500">-- Select Position --</option>
-                            {positions.map((p) => (
-                              <option key={p.id} value={p.id} className="text-gray-700">
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium text-gray-600 block mb-1">
+                              Position
+                            </label>
+                            <select
+                              value={selectedPositionId}
+                              onChange={(e) => setSelectedPositionId(e.target.value)}
+                              aria-label="Select position"
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm text-gray-700"
+                            >
+                              <option value="" className="text-gray-500">-- Select Position --</option>
+                              {positions.map((p) => (
+                                <option key={p.id} value={p.id} className="text-gray-700">
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                        <div>
-                          <label className="text-sm font-medium text-gray-600 block mb-1">
-                            Partylist
-                          </label>
-                          {partylists.length > 0 ? (
-                            <div className="space-y-2">
-                              <select
-                                value={selectedPartylistId}
-                                onChange={(e) => {
-                                  setSelectedPartylistId(e.target.value);
-                                  if (e.target.value !== "custom") {
-                                    setPartylistInput("");
-                                  }
-                                }}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm text-gray-700"
+                          <div>
+                            <label className="text-sm font-medium text-gray-600 block mb-1">
+                              Partylist
+                            </label>
+                            {partylists.length > 0 ? (
+                              <div className="space-y-2">
+                                <select
+                                  value={selectedPartylistId}
+                                  onChange={(e) => {
+                                    setSelectedPartylistId(e.target.value);
+                                    if (e.target.value !== "custom") {
+                                      setPartylistInput("");
+                                    }
+                                  }}
+                                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm text-gray-700"
+                                >
+                                  <option value="">-- Select Partylist --</option>
+                                  <option value="independent">Independent</option>
+                                  {partylists.map((p) => (
+                                    <option key={p.id} value={p.id.toString()}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                  <option value="custom">-- Other (Specify) --</option>
+                                </select>
+                                
+                                {selectedPartylistId === "custom" && (
+                                  <input
+                                    type="text"
+                                    placeholder="Enter custom partylist"
+                                    aria-label="Enter custom partylist"
+                                    value={partylistInput}
+                                    onChange={(e) => setPartylistInput(e.target.value)}
+                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm placeholder-gray-500"
+                                  />
+                                )}
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                placeholder="Enter Partylist"
+                                aria-label="Enter partylist"
+                                value={partylist}
+                                onChange={(e) => setPartylist(e.target.value)}
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm placeholder-gray-500"
+                              />
+                            )}
+                          </div>
+
+                          {/* Achievements Section */}
+                          <div className="border-t border-gray-200/50 pt-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <label className="text-sm font-medium text-gray-600">
+                                Achievements
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setShowHelpModal(true)}
+                                className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 text-xs"
+                                title="Learn more about achievement types"
                               >
-                                <option value="">-- Select Partylist --</option>
-                                <option value="independent">Independent</option>
-                                {partylists.map((p) => (
-                                  <option key={p.id} value={p.id.toString()}>
-                                    {p.name}
+                                ?
+                              </button>
+                            </div>
+
+                            {achievements.map((ach, i) => (
+                              <div
+                                key={i}
+                                className="flex gap-2 mb-3 items-start"
+                              >
+                                <select
+                                  value={ach.type}
+                                  onChange={(e) =>
+                                    updateAchievement(i, "type", e.target.value)
+                                  }
+                                  className="w-1/3 px-2 py-2 border rounded text-sm focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm text-gray-700"
+                                >
+                                  <option value="" className="text-gray-500">Type</option>
+                                  <option value="Academic" className="text-gray-700">Academic</option>
+                                  <option value="Leadership" className="text-gray-700">Leadership</option>
+                                  <option value="Community Service" className="text-gray-700">
+                                    Community Service
                                   </option>
-                                ))}
-                                <option value="custom">-- Other (Specify) --</option>
-                              </select>
-                              
-                              {selectedPartylistId === "custom" && (
+                                  <option value="Extracurricular" className="text-gray-700">
+                                    Extracurricular
+                                  </option>
+                                  <option value="Other" className="text-gray-700">Other</option>
+                                </select>
                                 <input
                                   type="text"
-                                  placeholder="Enter custom partylist"
-                                  aria-label="Enter custom partylist"
-                                  value={partylistInput}
-                                  onChange={(e) => setPartylistInput(e.target.value)}
-                                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm placeholder-gray-500"
+                                  placeholder="Achievement title"
+                                  value={ach.title}
+                                  onChange={(e) =>
+                                    updateAchievement(i, "title", e.target.value)
+                                  }
+                                  className="flex-1 px-2 py-2 border rounded text-sm focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm placeholder-gray-500"
                                 />
-                              )}
-                            </div>
-                          ) : (
-                            <input
-                              type="text"
-                              placeholder="Enter Partylist"
-                              aria-label="Enter partylist"
-                              value={partylist}
-                              onChange={(e) => setPartylist(e.target.value)}
-                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm placeholder-gray-500"
-                            />
-                          )}
-                        </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeAchievement(i)}
+                                  className="p-2 text-red-500 hover:bg-red-50 rounded"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
 
-                        {/* Achievements Section */}
-                        <div className="border-t border-gray-200/50 pt-4">
-                          <div className="flex items-center gap-2 mb-3">
-                            <label className="text-sm font-medium text-gray-600">
-                              Achievements
-                            </label>
                             <button
                               type="button"
-                              onClick={() => setShowHelpModal(true)}
-                              className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 text-xs"
-                              title="Learn more about achievement types"
+                              onClick={addAchievement}
+                              className="text-sm text-[#791010] hover:underline font-medium"
                             >
-                              ?
+                              + Add Achievement
                             </button>
                           </div>
 
-                          {achievements.map((ach, i) => (
-                            <div
-                              key={i}
-                              className="flex gap-2 mb-3 items-start"
+                          {/* Photo Upload */}
+                          <div className="border-t border-gray-200/50 pt-4">
+                            <label className="text-sm font-medium text-gray-600 block mb-1">
+                              Photo
+                            </label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  setPhotoFile(file);
+                                  setPhotoUrl(URL.createObjectURL(file));
+                                }
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#791010]/10 file:text-[#791010] hover:file:bg-[#791010]/20 text-gray-700"
+                            />
+                            {photoUrl && (
+                              <div className="mt-3 relative w-24 h-24 mx-auto">
+                                <img
+                                  src={photoUrl}
+                                  alt="Preview"
+                                  className="w-full h-full object-cover rounded-lg border"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* CoC Upload */}
+                          <div className="border-t border-gray-200/50 pt-4">
+                            <label className="text-sm font-medium text-gray-600 block mb-1">
+                              Certificate of Candidacy (PDF)
+                            </label>
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) setCocFile(file);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#791010]/10 file:text-[#791010] hover:file:bg-[#791010]/20 text-gray-700"
+                            />
+                            {selectedCandidate?.coc_file_url && (
+                              <div className="mt-3">
+                                <a
+                                  href={selectedCandidate.coc_file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => {
+                                    // For locally stored files, use our serve-file endpoint
+                                    if (selectedCandidate.coc_file_url?.startsWith('/uploads/candidates/')) {
+                                      // Extract filename from URL
+                                      const fileName = selectedCandidate.coc_file_url.split('/').pop();
+                                      if (fileName) {
+                                        const serveUrl = `/api/serve-file?file=${encodeURIComponent(fileName)}`;
+                                        window.open(serveUrl, '_blank');
+                                        return;
+                                      }
+                                    }
+                                    
+                                    // For Cloudinary files, redirect to our local serving endpoint
+                                    if (selectedCandidate.coc_file_url?.startsWith('https://res.cloudinary.com/')) {
+                                      // Extract the filename from the Cloudinary URL
+                                      try {
+                                        const urlParts = selectedCandidate.coc_file_url.split('/');
+                                        const fileName = urlParts[urlParts.length - 1];
+                                        if (fileName) {
+                                          // For PDF files, we'll need to migrate them to local storage
+                                          // For now, we can still try to open them with the attachment flag
+                                          if (selectedCandidate.coc_file_url.toLowerCase().endsWith('.pdf')) {
+                                            let pdfUrl = selectedCandidate.coc_file_url;
+                                            if (selectedCandidate.coc_file_url.includes('/upload/') && !selectedCandidate.coc_file_url.includes('fl_attachment:false')) {
+                                              // Add the attachment flag to prevent forced download
+                                              if (selectedCandidate.coc_file_url.includes('/raw/upload/')) {
+                                                pdfUrl = selectedCandidate.coc_file_url.replace('/raw/upload/', '/raw/upload/fl_attachment:false/');
+                                              } else {
+                                                pdfUrl = selectedCandidate.coc_file_url.replace('/upload/', '/upload/fl_attachment:false/');
+                                              }
+                                            }
+                                            window.open(pdfUrl, '_blank');
+                                            return;
+                                          } else {
+                                            // For other file types, use proxy
+                                            e.preventDefault();
+                                            window.open(`/api/proxy-file?url=${encodeURIComponent(selectedCandidate.coc_file_url)}`, '_blank');
+                                            return;
+                                          }
+                                        }
+                                      } catch (e) {
+                                        // If parsing fails, fall through to default behavior
+                                      }
+                                    }
+                                    
+                                    // Non-Cloudinary files open directly
+                                    window.open(selectedCandidate.coc_file_url, '_blank');
+                                  }}
+                                  className="text-sm text-[#791010] hover:underline"
+                                >
+                                  View Certificate of Candidacy
+                                </a>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex justify-end gap-3 pt-6">
+                            <button
+                              type="button"
+                              onClick={() => setIsFilingModalOpen(false)}
+                              className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
                             >
-                              <select
-                                value={ach.type}
-                                onChange={(e) =>
-                                  updateAchievement(i, "type", e.target.value)
-                                }
-                                className="w-1/3 px-2 py-2 border rounded text-sm focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm text-gray-700"
-                              >
-                                <option value="" className="text-gray-500">Type</option>
-                                <option value="Academic" className="text-gray-700">Academic</option>
-                                <option value="Leadership" className="text-gray-700">Leadership</option>
-                                <option value="Community Service" className="text-gray-700">
-                                  Community Service
-                                </option>
-                                <option value="Extracurricular" className="text-gray-700">
-                                  Extracurricular
-                                </option>
-                                <option value="Other" className="text-gray-700">Other</option>
-                              </select>
-                              <input
-                                type="text"
-                                placeholder="Achievement title"
-                                value={ach.title}
-                                onChange={(e) =>
-                                  updateAchievement(i, "title", e.target.value)
-                                }
-                                className="flex-1 px-2 py-2 border rounded text-sm focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm placeholder-gray-500"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeAchievement(i)}
-                                className="p-2 text-red-500 hover:bg-red-50 rounded"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-
-                          <button
-                            type="button"
-                            onClick={addAchievement}
-                            className="text-sm text-[#791010] hover:underline font-medium"
-                          >
-                            + Add Achievement
-                          </button>
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleFile}
+                              disabled={loading}
+                              className="px-5 py-2 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 disabled:opacity-50 transition"
+                            >
+                              {loading ? "Filing..." : "File Candidacy"}
+                            </button>
+                          </div>
                         </div>
-
-                        {/* Photo Upload */}
-                        <div className="border-t border-gray-200/50 pt-4">
-                          <label className="text-sm font-medium text-gray-600 block mb-1">
-                            Photo
-                          </label>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                setPhotoFile(file);
-                                setPhotoUrl(URL.createObjectURL(file));
-                              }
-                            }}
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#791010]/10 file:text-[#791010] hover:file:bg-[#791010]/20 text-gray-700"
-                          />
-                          {photoUrl && (
-                            <div className="mt-3 relative w-24 h-24 mx-auto">
-                              <img
-                                src={photoUrl}
-                                alt="Preview"
-                                className="w-full h-full object-cover rounded-lg border"
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* CoC Upload */}
-                        <div className="border-t border-gray-200/50 pt-4">
-                          <label className="text-sm font-medium text-gray-600 block mb-1">
-                            Certificate of Candidacy (PDF)
-                          </label>
-                          <input
-                            type="file"
-                            accept=".pdf"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) setCocFile(file);
-                            }}
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#791010] focus:outline-none bg-white/70 backdrop-blur-sm file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#791010]/10 file:text-[#791010] hover:file:bg-[#791010]/20 text-gray-700"
-                          />
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-6">
-                          <button
-                            type="button"
-                            onClick={() => setIsFilingModalOpen(false)}
-                            className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleFile}
-                            disabled={loading}
-                            className="px-5 py-2 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 disabled:opacity-50 transition"
-                          >
-                            {loading ? "Filing..." : "File Candidacy"}
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
 
-        {/* Help Modal */}
-        <AnimatePresence>
-          {showHelpModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-              aria-modal="true"
-              role="dialog"
-            >
+          {/* Photo Modal */}
+          <AnimatePresence>
+            {photoModalOpen && (
               <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="relative w-full max-w-md bg-gradient-to-br from-white/90 via-pink-50 to-red-50 backdrop-blur-lg border border-white/60 rounded-2xl shadow-2xl overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                onClick={closePhotoModal}
               >
-                {/* Modal Header */}
-                <div className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white font-semibold text-lg">
-                  <h2>Achievement Types</h2>
-                  <button 
-                    onClick={() => setShowHelpModal(false)} 
-                    className="hover:opacity-80 transition text-xl"
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="relative max-w-4xl w-full max-h-[90vh]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <img
+                    src={photoModalUrl}
+                    alt="Candidate"
+                    className="w-full h-full object-contain rounded-lg shadow-2xl"
+                  />
+                  <button
+                    onClick={closePhotoModal}
+                    className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition"
                   >
                     ✕
                   </button>
-                </div>
-
-                {/* Modal Content */}
-                <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar modal-content">
-                  <ul className="space-y-4">
-                    <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
-                      <div className="font-semibold text-[#791010] mb-1">Academic</div>
-                      <p className="text-sm text-gray-600">Grades, scholarships, academic awards</p>
-                    </li>
-                    <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
-                      <div className="font-semibold text-[#791010] mb-1">Leadership</div>
-                      <p className="text-sm text-gray-600">Club presidencies, team captain, organizational roles</p>
-                    </li>
-                    <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
-                      <div className="font-semibold text-[#791010] mb-1">Community Service</div>
-                      <p className="text-sm text-gray-600">Volunteering, outreach programs, charity work</p>
-                    </li>
-                    <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
-                      <div className="font-semibold text-[#791010] mb-1">Extracurricular</div>
-                      <p className="text-sm text-gray-600">Sports, arts, competitions, clubs</p>
-                    </li>
-                    <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
-                      <div className="font-semibold text-[#791010] mb-1">Other</div>
-                      <p className="text-sm text-gray-600">Any other relevant accomplishments</p>
-                    </li>
-                  </ul>
-                  <button
-                    onClick={() => setShowHelpModal(false)}
-                    className="mt-6 w-full py-2.5 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 transition font-medium"
-                  >
-                    Close
-                  </button>
-                </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
+
+          {/* Help Modal */}
+          <AnimatePresence>
+            {showHelpModal && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                aria-modal="true"
+                role="dialog"
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="relative w-full max-w-md bg-gradient-to-br from-white/90 via-pink-50 to-red-50 backdrop-blur-lg border border-white/60 rounded-2xl shadow-2xl overflow-hidden"
+                >
+                  {/* Modal Header */}
+                  <div className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white font-semibold text-lg">
+                    <h2>Achievement Types</h2>
+                    <button 
+                      onClick={() => setShowHelpModal(false)} 
+                      className="hover:opacity-80 transition text-xl"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar modal-content">
+                    <ul className="space-y-4">
+                      <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
+                        <div className="font-semibold text-[#791010] mb-1">Academic</div>
+                        <p className="text-sm text-gray-600">Grades, scholarships, academic awards</p>
+                      </li>
+                      <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
+                        <div className="font-semibold text-[#791010] mb-1">Leadership</div>
+                        <p className="text-sm text-gray-600">Club presidencies, team captain, organizational roles</p>
+                      </li>
+                      <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
+                        <div className="font-semibold text-[#791010] mb-1">Community Service</div>
+                        <p className="text-sm text-gray-600">Volunteering, outreach programs, charity work</p>
+                      </li>
+                      <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
+                        <div className="font-semibold text-[#791010] mb-1">Extracurricular</div>
+                        <p className="text-sm text-gray-600">Sports, arts, competitions, clubs</p>
+                      </li>
+                      <li className="p-4 bg-white/60 rounded-lg border border-white/40 hover:shadow-md transition">
+                        <div className="font-semibold text-[#791010] mb-1">Other</div>
+                        <p className="text-sm text-gray-600">Any other relevant accomplishments</p>
+                      </li>
+                    </ul>
+                    <button
+                      onClick={() => setShowHelpModal(false)}
+                      className="mt-6 w-full py-2.5 rounded-lg bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white hover:opacity-90 transition font-medium"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </main>
       <Footer />
     </>
   );
 }
-
-// Add Footer component
-Object.assign(CandidatesPage, { Footer });

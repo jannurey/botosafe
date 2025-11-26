@@ -676,6 +676,54 @@ export default function ProfilePage() {
                             href={app.coc_file_url}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => {
+                              // For locally stored files, use our serve-file endpoint
+                              if (app.coc_file_url?.startsWith('/uploads/candidates/')) {
+                                // Extract filename from URL
+                                const fileName = app.coc_file_url.split('/').pop();
+                                if (fileName) {
+                                  const serveUrl = `/api/serve-file?file=${encodeURIComponent(fileName)}`;
+                                  window.open(serveUrl, '_blank');
+                                  return;
+                                }
+                              }
+                              
+                              // For Cloudinary files, redirect to our local serving endpoint
+                              if (app.coc_file_url?.startsWith('https://res.cloudinary.com/')) {
+                                // Extract the filename from the Cloudinary URL
+                                try {
+                                  const urlParts = app.coc_file_url.split('/');
+                                  const fileName = urlParts[urlParts.length - 1];
+                                  if (fileName) {
+                                    // For PDF files, we'll need to migrate them to local storage
+                                    // For now, we can still try to open them with the attachment flag
+                                    if (app.coc_file_url.toLowerCase().endsWith('.pdf')) {
+                                      let pdfUrl = app.coc_file_url;
+                                      if (app.coc_file_url.includes('/upload/') && !app.coc_file_url.includes('fl_attachment:false')) {
+                                        // Add the attachment flag to prevent forced download
+                                        if (app.coc_file_url.includes('/raw/upload/')) {
+                                          pdfUrl = app.coc_file_url.replace('/raw/upload/', '/raw/upload/fl_attachment:false/');
+                                        } else {
+                                          pdfUrl = app.coc_file_url.replace('/upload/', '/upload/fl_attachment:false/');
+                                        }
+                                      }
+                                      window.open(pdfUrl, '_blank');
+                                      return;
+                                    } else {
+                                      // For other file types, use proxy
+                                      e.preventDefault();
+                                      window.open(`/api/proxy-file?url=${encodeURIComponent(app.coc_file_url)}`, '_blank');
+                                      return;
+                                    }
+                                  }
+                                } catch (e) {
+                                  // If parsing fails, fall through to default behavior
+                                }
+                              }
+                              
+                              // Non-Cloudinary files open directly
+                              window.open(app.coc_file_url, '_blank');
+                            }}
                             className="px-4 py-2 text-sm rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition font-medium"
                           >
                             View CoC

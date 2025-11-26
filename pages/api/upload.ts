@@ -79,58 +79,35 @@ export default async function handler(
     }
 
     try {
-      // If Cloudinary is configured, use it
-      if (hasCloudinaryConfig) {
-        const filePath = uploadedFile.filepath;
-        
-        console.log("📤 Uploading to Cloudinary:", {
-          fileName: uploadedFile.originalFilename,
-          fileSize: uploadedFile.size,
-        });
-        
-        const result = await cloudinary.uploader.upload(filePath, {
-          folder: "botosafe/candidates",
-          resource_type: "auto",
-          timeout: 60000, // 60 second timeout
-          // Ensure files are publicly accessible
-          access_mode: "public",
-          invalidate: true,
-          // Force inline display for PDFs
-          transformation: {
-            flags: "attachment:false"
-          }
-        });
-
-        // Delete temporary file
-        try {
-          fs.unlinkSync(filePath);
-        } catch (unlinkErr) {
-          console.warn("⚠️ Failed to delete temp file:", unlinkErr);
-        }
-
-        console.log("✅ Upload successful:", result.secure_url);
-        res.status(200).json({ url: result.secure_url });
-      } else {
-        // If Cloudinary is not configured, save locally
-        const uploadDir = path.join(process.cwd(), "public", "uploads");
-        
-        // Create upload directory if it doesn't exist
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        
-        // Generate unique filename
-        const fileExtension = path.extname(uploadedFile.originalFilename || "");
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}${fileExtension}`;
-        const newPath = path.join(uploadDir, fileName);
-        
-        // Move file from temp location to uploads directory
-        fs.renameSync(uploadedFile.filepath, newPath);
-        
-        // Return URL relative to public directory
-        const url = `/uploads/${fileName}`;
-        res.status(200).json({ url });
+      // Always save files locally instead of using Cloudinary
+      // This ensures we can properly serve PDFs for viewing in browser
+      const uploadDir = path.join(process.cwd(), "public", "uploads", "candidates");
+      
+      // Create upload directory if it doesn't exist
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
       }
+      
+      // Generate unique filename with original extension
+      const fileExtension = path.extname(uploadedFile.originalFilename || "");
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}${fileExtension}`;
+      const newPath = path.join(uploadDir, fileName);
+      
+      // Copy file from temp location to uploads directory (instead of renaming)
+      // This avoids cross-device link issues on Windows
+      const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+      fs.writeFileSync(newPath, fileBuffer);
+      
+      // Delete temporary file
+      try {
+        fs.unlinkSync(uploadedFile.filepath);
+      } catch (unlinkErr) {
+        console.warn("⚠️ Failed to delete temp file:", unlinkErr);
+      }
+      
+      // Return URL relative to public directory
+      const url = `/uploads/candidates/${fileName}`;
+      res.status(200).json({ url });
     } catch (uploadErr) {
       console.error("❌ Upload error:", uploadErr);
       const errorMessage = uploadErr instanceof Error ? uploadErr.message : "Upload failed";
