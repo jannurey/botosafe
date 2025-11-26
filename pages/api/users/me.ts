@@ -39,7 +39,12 @@ export default async function handler(
 
       const { data: user, error: userError } = await users.getById(Number(userId));
       
-      if (userError || !user || !user.id) {
+      if (userError) {
+        console.error("Error fetching user:", userError);
+        return res.status(500).json({ message: "Error fetching user" });
+      }
+      
+      if (!user || !user.id) {
         return res.status(404).json({ message: "User not found" });
       }
 
@@ -58,7 +63,12 @@ export default async function handler(
     // Get user from Supabase
     const { data: user, error: userError } = await users.getById(decoded.id);
     
-    if (userError || !user || !user.id) {
+    if (userError) {
+      console.error("Error fetching user:", userError);
+      return res.status(500).json({ message: "Error fetching user" });
+    }
+    
+    if (!user || !user.id) {
       return res.status(404).json({ message: "User not found" });
     }
 

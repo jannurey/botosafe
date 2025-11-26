@@ -34,13 +34,21 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+// Calculate median of an array
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 function toNumberArray(input: unknown): number[] {
   if (Array.isArray(input)) return input.map(Number);
   if (input instanceof Float32Array) return Array.from(input);
   throw new Error("Invalid embedding format");
 }
 
-const THRESHOLD = 0.85;
+const THRESHOLD = 0.92; // Consistent with registration threshold
 
 // ------------------- HANDLER -------------------
 export default async function handler(
@@ -97,23 +105,29 @@ export default async function handler(
     
     // Compare incoming embedding against all stored embeddings
     let maxSimilarity = 0;
+    let allSimilarities: number[] = [];
     for (const storedEmb of storedEmbeddings) {
       const sim = cosineSimilarity(normalized, storedEmb);
+      allSimilarities.push(sim);
       if (sim > maxSimilarity) {
         maxSimilarity = sim;
       }
     }
     
+    // Calculate median similarity instead of using max similarity
+    const medianSimilarity = median(allSimilarities);
+    
     // Log the similarity score for debugging
-    console.log(`Face verification for user ${userId}: similarity = ${maxSimilarity.toFixed(4)}, threshold = ${THRESHOLD}`);
+    console.log(`Face verification for user ${userId}: medianSimilarity = ${medianSimilarity.toFixed(4)}, maxSimilarity = ${maxSimilarity.toFixed(4)}, threshold = ${THRESHOLD}`);
 
-    if (maxSimilarity < THRESHOLD) {
+    if (medianSimilarity < THRESHOLD) {
       return res
         .status(200)
         .json({ 
           match: false, 
           message: "Face not recognized",
           bestScore: maxSimilarity,
+          medianScore: medianSimilarity,
           threshold: THRESHOLD
         });
     }

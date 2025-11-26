@@ -11,7 +11,8 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<{ message: string }>
 ) {
-  if (req.method !== "POST") {
+  // Allow both GET and POST methods for flexibility
+  if (req.method !== "POST" && req.method !== "GET") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 

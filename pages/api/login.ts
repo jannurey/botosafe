@@ -188,6 +188,12 @@ export default async function handler(
     
     res.setHeader("Set-Cookie", cookieHeader);
     
+    // Update last_login_at timestamp
+    await supabaseAdmin
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', user.id);
+    
     return res.status(200).json({
       message: `${user.role === "admin" ? "Admin" : "User"} login successful`,
       userId: user.id,

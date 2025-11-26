@@ -252,7 +252,7 @@ export default function FaceScanPage() {
 
       try {
         const detection = await faceapi
-          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
 
@@ -446,7 +446,7 @@ export default function FaceScanPage() {
         const detection = await faceapi
           .detectSingleFace(
             video,
-            new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 })
+            new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3, inputSize: 224 })
           )
           .withFaceLandmarks();
 

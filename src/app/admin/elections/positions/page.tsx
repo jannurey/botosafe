@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FaEdit, FaTrash, FaArrowLeft, FaPlus } from "react-icons/fa";
+import { FaEdit, FaTrash, FaArrowLeft, FaPlus, FaMinus } from "react-icons/fa";
 
 type Position = {
   id: number;
@@ -10,6 +10,11 @@ type Position = {
   election_id: number;
   election_title: string;
   created_at: string;
+};
+
+type NewPosition = {
+  name: string;
+  election_id: number | "";
 };
 
 type Election = {
@@ -25,6 +30,9 @@ export default function PositionsPage() {
   const [electionId, setElectionId] = useState<number | "">("");
   const [elections, setElections] = useState<Election[]>([]);
   const [loading, setLoading] = useState(false);
+  // Batch creation states
+  const [newPositions, setNewPositions] = useState<NewPosition[]>([{ name: "", election_id: "" }]);
+  const [isBatchMode, setIsBatchMode] = useState(true); // Set to true by default
 
   const router = useRouter();
 
@@ -61,10 +69,14 @@ export default function PositionsPage() {
       setEditingPosition(position);
       setName(position.name);
       setElectionId(position.election_id);
+      setIsBatchMode(false); // Disable batch mode when editing
     } else {
       setEditingPosition(null);
       setName("");
       setElectionId("");
+      // Reset batch mode when creating new
+      setNewPositions([{ name: "", election_id: "" }]);
+      setIsBatchMode(true); // Enable batch mode for new positions
     }
     setIsModalOpen(true);
   };
@@ -74,37 +86,92 @@ export default function PositionsPage() {
     setEditingPosition(null);
     setName("");
     setElectionId("");
+    // Reset batch mode
+    setNewPositions([{ name: "", election_id: "" }]);
+    setIsBatchMode(true); // Always reset to batch mode for new positions
   };
 
-  // Save position
+  // Batch position handlers
+  const addNewPositionField = () => {
+    setNewPositions([...newPositions, { name: "", election_id: "" }]);
+  };
+
+  const removeNewPositionField = (index: number) => {
+    if (newPositions.length > 1) {
+      const updatedPositions = [...newPositions];
+      updatedPositions.splice(index, 1);
+      setNewPositions(updatedPositions);
+    }
+  };
+
+  const updateNewPositionField = (index: number, field: keyof NewPosition, value: string | number) => {
+    const updatedPositions = [...newPositions];
+    updatedPositions[index] = { ...updatedPositions[index], [field]: value };
+    setNewPositions(updatedPositions);
+  };
+
+  // Save position (single or batch)
   const handleSave = async (): Promise<void> => {
-    if (!name || !electionId) {
-      alert("Please fill out all required fields.");
-      return;
-    }
+    if (editingPosition) {
+      // Edit existing position (single mode)
+      if (!name || !electionId) {
+        alert("Please fill out all required fields.");
+        return;
+      }
 
-    setLoading(true);
+      setLoading(true);
 
-    const payload = { name, election_id: Number(electionId) };
-    const url = editingPosition
-      ? `/api/positions/${editingPosition.id}`
-      : "/api/positions";
-    const method = editingPosition ? "PUT" : "POST";
+      const payload = { name, election_id: Number(electionId) };
+      const url = `/api/positions/${editingPosition.id}`;
+      const method = "PUT";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (res.ok) {
-      await refreshData();
-      closeModal();
+      if (res.ok) {
+        await refreshData();
+        closeModal();
+      } else {
+        console.error("Failed to save position");
+      }
+
+      setLoading(false);
     } else {
-      console.error("Failed to save position");
-    }
+      // Batch creation mode (always used for new positions)
+      const validPositions = newPositions.filter(pos => pos.name && pos.election_id);
+      
+      if (validPositions.length === 0) {
+        alert("Please add at least one valid position.");
+        return;
+      }
 
-    setLoading(false);
+      setLoading(true);
+
+      try {
+        const res = await fetch("/api/positions/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ positions: validPositions }),
+        });
+
+        if (res.ok) {
+          await refreshData();
+          closeModal();
+        } else {
+          const errorData = await res.json();
+          console.error("Failed to save positions:", errorData.error);
+          alert(`Failed to save positions: ${errorData.error}`);
+        }
+      } catch (error) {
+        console.error("Failed to save positions:", error);
+        alert("An error occurred while saving positions");
+      }
+
+      setLoading(false);
+    }
   };
 
   // Delete position
@@ -195,7 +262,7 @@ export default function PositionsPage() {
         <table className="min-w-full text-sm text-left border-collapse">
           <thead className="bg-gray-50 text-gray-700 uppercase text-xs">
             <tr>
-              <th className="p-3">Position Name</th>
+              <th className="p-3">osition Name</th>
               <th className="p-3">Election</th>
               <th className="p-3 text-center">Actions</th>
             </tr>
@@ -243,36 +310,86 @@ export default function PositionsPage() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white p-6 rounded-lg w-full max-w-md shadow-lg overflow-y-auto max-h-[90vh]">
             <h2 className="text-lg font-bold mb-4 text-gray-800">
-              {editingPosition ? "Edit Position" : "Create Position"}
+              {editingPosition ? "Edit Position" : "Create Multiple Positions"}
             </h2>
 
-            <div className="space-y-3">
-              <label className="block text-sm text-gray-600">
-                Position Name
-                <input
-                  type="text"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 mt-1"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </label>
+            {editingPosition ? (
+              // Edit single position form
+              <div className="space-y-3">
+                <label className="block text-sm text-gray-600">
+                  Position Name
+                  <input
+                    type="text"
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 mt-1"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </label>
 
-              <label className="block text-sm text-gray-600">
-                Select Election
-                <select
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 mt-1"
-                  value={electionId}
-                  onChange={(e) => setElectionId(Number(e.target.value))}
+                <label className="block text-sm text-gray-600">
+                  Select Election
+                  <select
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 mt-1"
+                    value={electionId}
+                    onChange={(e) => setElectionId(Number(e.target.value))}
+                  >
+                    <option value="">Select Election</option>
+                    {elections.map((el) => (
+                      <option key={el.id} value={el.id}>
+                        {el.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : (
+              // Batch creation form (always show for new positions)
+              <div className="space-y-4">
+                {newPositions.map((pos, index) => (
+                  <div key={index} className="border rounded-lg p-3 bg-gray-50">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium">Position {index + 1}</span>
+                      {newPositions.length > 1 && (
+                        <button
+                          onClick={() => removeNewPositionField(index)}
+                          className="text-red-600 hover:text-red-800"
+                          title="Remove Position"
+                        >
+                          <FaMinus />
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="Position Name"
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                        value={pos.name}
+                        onChange={(e) => updateNewPositionField(index, "name", e.target.value)}
+                      />
+                      <select
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                        value={pos.election_id}
+                        onChange={(e) => updateNewPositionField(index, "election_id", Number(e.target.value))}
+                      >
+                        <option value="">Select Election</option>
+                        {elections.map((el) => (
+                          <option key={el.id} value={el.id}>
+                            {el.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={addNewPositionField}
+                  className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm"
                 >
-                  <option value="">Select Election</option>
-                  {elections.map((el) => (
-                    <option key={el.id} value={el.id}>
-                      {el.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+                  <FaPlus size={12} /> Add Another Position
+                </button>
+              </div>
+            )}
 
             <div className="mt-5 flex flex-col sm:flex-row justify-end gap-2">
               <button
@@ -286,7 +403,7 @@ export default function PositionsPage() {
                 disabled={loading}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow w-full sm:w-auto"
               >
-                {loading ? "Saving..." : "Save"}
+                {loading ? "Saving..." : editingPosition ? "Save" : "Save All Positions"}
               </button>
             </div>
           </div>

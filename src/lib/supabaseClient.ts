@@ -17,6 +17,7 @@ interface UserData {
   approved_at?: string;
   last_login_at?: string;
   profile_status?: string;
+  must_change_password?: boolean; // New field for first-time login password change
 }
 
 interface UserOTPData {
@@ -119,12 +120,24 @@ export const users = {
 
   // Get user by ID
   getById: async (id: number) => {
-    const builder = supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('users')
       .select('*')
       .eq('id', id)
       .single();
-    return handleSupabaseSingleResponse<UserData>(builder);
+      
+    // If no data found, this is not an error - just return null data
+    if (error && error.code === 'PGRST116') {
+      return { data: null, error: null };
+    }
+    
+    // For other errors, handle normally
+    if (error) {
+      console.error("Supabase error:", error);
+      return { data: null, error: new Error(error.message) };
+    }
+    
+    return { data: data || null, error: null };
   },
 
   // Create user
@@ -222,10 +235,13 @@ export const userOtps = {
 export const userFaces = {
   // Get all face embeddings (for duplicate checking)
   getAll: async () => {
+    console.log("Fetching all face embeddings for duplicate checking");
     const builder = supabaseAdmin
       .from('user_faces')
       .select('id, user_id, face_embedding');
-    return handleSupabaseResponse<UserFaceData>(builder);
+    const result = await handleSupabaseResponse<UserFaceData>(builder);
+    console.log(`Fetched ${result.data?.length || 0} face embeddings`);
+    return result;
   },
 
   // Get face embedding for user
@@ -252,6 +268,9 @@ export const userFaces = {
 
   // Create or update face embedding for user
   upsert: async (userId: number, faceEmbedding: string) => {
+    console.log(`Upserting face embedding for user ${userId}`);
+    console.log(`Face embedding length: ${faceEmbedding.length}`);
+    
     // First try to update existing face embedding for user
     const { data: updateData, error: updateError } = await supabaseAdmin
       .from('user_faces')
@@ -264,10 +283,12 @@ export const userFaces = {
 
     // If update succeeded, return the result
     if (!updateError && updateData) {
+      console.log(`Updated existing face embedding for user ${userId}`);
       return { data: updateData, error: null };
     }
 
     // If update failed because no record exists, insert a new one
+    console.log(`Inserting new face embedding for user ${userId}`);
     const builder = supabaseAdmin
       .from('user_faces')
       .insert({ 
@@ -276,7 +297,9 @@ export const userFaces = {
       })
       .select()
       .single();
-    return handleSupabaseSingleResponse<UserFaceData>(builder);
+    const result = await handleSupabaseSingleResponse<UserFaceData>(builder);
+    console.log(`Insert result for user ${userId}:`, result);
+    return result;
   }
 };
 

@@ -35,10 +35,6 @@ export default function AdminCandidatesPage() {
   const [positionFilter, setPositionFilter] = useState("all");
   const [electionFilter, setElectionFilter] = useState("all");
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalFile, setModalFile] = useState<string | null>(null);
-  const [modalIsPdf, setModalIsPdf] = useState(false);
-  
   // Add state for view candidate modal
   const [viewCandidate, setViewCandidate] = useState<ViewCandidate>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -179,9 +175,13 @@ export default function AdminCandidatesPage() {
   };
 
   const openModal = (fileUrl: string) => {
-    setModalFile(fileUrl);
-    setModalIsPdf(/\.pdf$/i.test(fileUrl));
-    setModalOpen(true);
+    // Instead of opening in a modal, open in a new tab
+    // For Cloudinary files, use our proxy to avoid CORS issues
+    if (fileUrl.startsWith('https://res.cloudinary.com/')) {
+      window.open(`/api/proxy-file?url=${encodeURIComponent(fileUrl)}`, '_blank');
+    } else {
+      window.open(fileUrl, '_blank');
+    }
   };
 
   // Add function to view candidate details
@@ -211,19 +211,6 @@ export default function AdminCandidatesPage() {
     startIdx,
     startIdx + itemsPerPage
   );
-
-  // Prevent background scrolling when modal is open
-  useEffect(() => {
-    if (modalOpen) {
-      document.body.classList.add('modal-open');
-    } else {
-      document.body.classList.remove('modal-open');
-    }
-
-    return () => {
-      document.body.classList.remove('modal-open');
-    };
-  }, [modalOpen]);
 
   return (
     <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
@@ -719,36 +706,7 @@ export default function AdminCandidatesPage() {
         </div>
       )}
 
-      {/* File Preview Modal - Responsive */}
-      {modalOpen && modalFile && (
-        <div className="modal-overlay flex items-center justify-center p-2">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
-          <div className="modal-content relative bg-white p-3 md:p-6 rounded-2xl shadow-2xl w-full max-w-4xl mx-2 md:mx-4 border border-gray-200">
-            <button
-              onClick={() => setModalOpen(false)}
-              className="absolute top-2 right-2 md:top-3 md:right-3 text-gray-500 hover:text-gray-700 text-xl md:text-2xl font-bold"
-            >
-              ×
-            </button>
 
-            {modalIsPdf ? (
-              <iframe
-                src={modalFile}
-                className="w-full h-[400px] md:h-[600px] border rounded-lg"
-                title="PDF Preview"
-              />
-            ) : (
-              <Image
-                src={modalFile}
-                alt="Preview"
-                width={800}
-                height={600}
-                className="w-full h-auto max-h-[400px] md:max-h-[600px] object-contain rounded-lg"
-              />
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

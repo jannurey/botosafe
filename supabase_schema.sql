@@ -21,6 +21,7 @@ CREATE TABLE users (
   can_vote BOOLEAN DEFAULT FALSE,
   last_login_at TIMESTAMP WITH TIME ZONE NULL,
   approved_at TIMESTAMP WITH TIME ZONE NULL,
+  must_change_password BOOLEAN DEFAULT TRUE, -- New column to track first-time login, default TRUE for existing users
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -30,10 +31,10 @@ CREATE TABLE elections (
   id SERIAL PRIMARY KEY,
   title VARCHAR(255) NOT NULL,
   status VARCHAR(20) CHECK (status IN ('upcoming', 'filing', 'ongoing', 'closed')) NOT NULL,
-  start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-  end_time TIMESTAMP WITH TIME ZONE NOT NULL,
-  filing_start_time TIMESTAMP WITH TIME ZONE NULL,
-  filing_end_time TIMESTAMP WITH TIME ZONE NULL,
+  start_time TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+  end_time TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+  filing_start_time TIMESTAMP WITHOUT TIME ZONE NULL,
+  filing_end_time TIMESTAMP WITHOUT TIME ZONE NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

@@ -184,7 +184,29 @@ export default function VerifyOtpPage() {
     return `${m}:${s}`;
   };
 
-  if (!username) return null; // Changed from email to username
+  if (!username) {
+    // If no username is found, show an error message and provide a way back to login
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-white via-purple-100 to-red-100">
+        <Header />
+        <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">
+          <div className="w-full max-w-md bg-white/80 p-6 rounded-xl shadow-lg text-center">
+            <h1 className="text-2xl font-bold text-[#791010] mb-4">Authentication Error</h1>
+            <p className="text-sm text-gray-600 mb-6">
+              Unable to verify your identity. Please log in again.
+            </p>
+            <button
+              onClick={() => window.location.href = "/signin/login"}
+              className="w-full bg-[#791010] text-white py-2 rounded-lg hover:bg-red-800"
+            >
+              Back to Login
+            </button>
+          </div>
+        </div>
+        <Footer />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-white via-purple-100 to-red-100">

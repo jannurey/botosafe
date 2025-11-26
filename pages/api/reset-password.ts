@@ -88,10 +88,13 @@ export default async function handler(
     // Hash the new password (match the hashing used elsewhere in your app)
     const hashedPassword = await bcrypt.hash(String(password), 10);
 
-    // Update user's password
+    // Update user's password and clear the must_change_password flag
     const { error: updateError } = await supabaseAdmin
       .from('users')
-      .update({ password: hashedPassword })
+      .update({ 
+        password: hashedPassword,
+        must_change_password: false // Clear the flag after password change
+      })
       .eq('id', row.user_id);
 
     if (updateError) {

@@ -63,7 +63,7 @@ function median(values: number[]): number {
 }
 
 /* ---------- Config ---------- */
-const THRESHOLD_MATCH = 0.85;
+const THRESHOLD_MATCH = 0.92; // Consistent with registration and verification thresholds
 
 /* ---------- Handler ---------- */
 export default async function handler(

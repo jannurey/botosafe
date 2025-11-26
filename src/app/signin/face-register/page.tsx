@@ -204,6 +204,19 @@ export default function FaceRegistrationPage() {
     return v / h;
   };
 
+  // Cosine similarity function for comparing embeddings
+  const cosineSimilarity = (a: number[], b: number[]): number => {
+    if (a.length !== b.length) return 0;
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    if (normA === 0 || normB === 0) return 0;
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  };
+
   // Calculate head yaw (left-right rotation) from facial landmarks
   const calculateHeadYaw = (landmarks: FaceAPI.FaceLandmarks68): number => {
     const points = landmarks.positions;
@@ -291,64 +304,96 @@ export default function FaceRegistrationPage() {
       // Capture multiple face samples
       const embeddings: number[][] = [];
       const maxSamples = 5; // Capture up to 5 samples
-      let samplesCaptured = 0;
       
-      // Capture multiple samples with a short delay between each
+      // Helper function to capture a unique embedding from a new frame
+      const captureUniqueEmbedding = async (prevEmbeddings: number[][]): Promise<number[] | null> => {
+        let newEmbedding: number[] | null = null;
+        let attempts = 0;
+        const maxAttempts = 20;
+        
+        // Track previous video time to ensure we get new frames
+        let prevTime = video.currentTime;
+        
+        while (attempts < maxAttempts) {
+          attempts++;
+          
+          // Wait for an actual new frame using requestAnimationFrame
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          
+          // Check if we have a genuinely new frame
+          if (video.currentTime === prevTime) {
+            continue; // Same frame, skip
+          }
+          
+          prevTime = video.currentTime;
+          
+          try {
+            // Capture embedding from current frame
+            const detection = await faceapi
+              .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3, inputSize: 224 }))
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+            
+            if (!detection) continue;
+            
+            // Quality validation
+            const detectionScore = detection.detection.score;
+            if (detectionScore < 0.7) continue;
+            
+            // Verify descriptor length
+            if (!detection.descriptor || detection.descriptor.length !== 128) continue;
+            
+            const embedding = Array.from(detection.descriptor);
+            
+            // Compare to previous embeddings to ensure uniqueness
+            let isTooSimilar = false;
+            for (const prev of prevEmbeddings) {
+              const sim = cosineSimilarity(embedding, prev);
+              // Use a more reasonable threshold of 0.985 instead of 0.999
+              if (sim > 0.985) {
+                isTooSimilar = true;
+                break;
+              }
+            }
+            
+            if (isTooSimilar) {
+              continue; // Try again with a new frame
+            }
+            
+            // Accept this embedding
+            newEmbedding = embedding;
+            break;
+          } catch (error) {
+            console.warn("Error capturing embedding:", error);
+            continue;
+          }
+        }
+        
+        return newEmbedding;
+      };
+
+      // Capture multiple unique samples
+      let samplesCaptured = 0;
       while (samplesCaptured < maxSamples) {
         try {
-          const detection = await faceapi
-            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-
-          if (!detection) {
-            // If we have at least 3 samples, proceed with registration
-            if (samplesCaptured >= 3) {
-              break;
-            }
-            // Otherwise wait and try again
-            await new Promise(resolve => setTimeout(resolve, 200));
-            continue;
-          }
-
-          // Quality validation - ensure good detection score
-          const detectionScore = detection.detection.score;
-          if (detectionScore < 0.7) {
-            // If we have at least 3 samples, proceed with registration
-            if (samplesCaptured >= 3) {
-              break;
-            }
-            // Otherwise wait and try again
-            await new Promise(resolve => setTimeout(resolve, 200));
-            continue;
-          }
-
-          // Verify descriptor length is correct (128 dimensions)
-          if (!detection.descriptor || detection.descriptor.length !== 128) {
-            // If we have at least 3 samples, proceed with registration
-            if (samplesCaptured >= 3) {
-              break;
-            }
-            // Otherwise wait and try again
-            await new Promise(resolve => setTimeout(resolve, 200));
-            continue;
-          }
-
-          const embedding = Array.from(detection.descriptor);
-          embeddings.push(embedding);
-          samplesCaptured++;
-          setStatus(`🧠 Captured sample ${samplesCaptured}/${maxSamples}...`);
+          setStatus(`🧠 Capturing sample ${samplesCaptured + 1}/${maxSamples}...`);
           
-          // Provide user feedback
-          if (samplesCaptured === 1) {
-            addErrorMessage("✅ First sample captured. Keep your head still for more samples...");
-          } else if (samplesCaptured === maxSamples) {
-            addErrorMessage("✅ All samples captured! Processing...");
-          }
-          
-          // Small delay between captures to get different angles/expressions
-          if (samplesCaptured < maxSamples) {
-            await new Promise(resolve => setTimeout(resolve, 300));
+          const embedding = await captureUniqueEmbedding(embeddings);
+          if (embedding) {
+            embeddings.push(embedding);
+            samplesCaptured++;
+            
+            // Provide user feedback
+            if (samplesCaptured === 1) {
+              addErrorMessage("✅ First sample captured. Keep your head still for more samples...");
+            } else if (samplesCaptured === maxSamples) {
+              addErrorMessage("✅ All samples captured! Processing...");
+            }
+          } else {
+            // If we couldn't capture a unique embedding, break if we have enough
+            if (samplesCaptured >= 3) {
+              break;
+            }
           }
         } catch (captureError) {
           console.error("Error capturing face sample:", captureError);
@@ -356,8 +401,6 @@ export default function FaceRegistrationPage() {
           if (samplesCaptured >= 3) {
             break;
           }
-          // Otherwise wait and try again
-          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
       
@@ -375,8 +418,41 @@ export default function FaceRegistrationPage() {
       
       console.log(`✅ ${embeddings.length} high-quality face samples captured!`);
       
+      // Log all embeddings with timestamps for debugging
+      console.log("All captured embeddings:");
+      embeddings.forEach((emb, index) => {
+        console.log(`  Embedding ${index}: ${emb.slice(0, 5).join(', ')}...`);
+      });
+      
+      // Check for duplicate embeddings
+      const embeddingStrings = embeddings.map(emb => JSON.stringify(emb));
+      const uniqueEmbeddings = new Set(embeddingStrings);
+      if (uniqueEmbeddings.size !== embeddings.length) {
+        console.warn(`⚠️ Warning: ${embeddings.length - uniqueEmbeddings.size} duplicate embeddings found!`);
+        // If we have duplicates, filter them out
+        const uniqueEmbeddingsArray = Array.from(uniqueEmbeddings).map(str => JSON.parse(str));
+        console.log(`Using ${uniqueEmbeddingsArray.length} unique embeddings instead.`);
+      }
+      
+      // Final check: Ensure we have enough unique embeddings
+      if (uniqueEmbeddings.size < 3) {
+        addErrorMessage(`❌ Only ${uniqueEmbeddings.size} unique face samples captured. Minimum 3 required.`);
+        setRegistering(false);
+        setProcessing(false);
+        setStep("turnLeft");
+        setProgress({ turnLeft: false, turnRight: false, holdStill: false });
+        setScanTimer(0);
+        setIsScanning(false);
+        return;
+      }
+      
       // Get user ID from temporary token instead of localStorage
       try {
+        // Prevent multiple simultaneous registration attempts
+        if (registering) {
+          console.warn("⚠️ Registration already in progress, skipping duplicate request");
+          return;
+        }
         // Add timeout for the fetch request (30 seconds)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -404,6 +480,8 @@ export default function FaceRegistrationPage() {
 
         if (res.ok) {
           setSuccessMsg("✅ Face registered successfully!");
+          setRegistering(false); // ✅ CRITICAL FIX: Clear registering state
+          setProcessing(false);  // ✅ CRITICAL FIX: Clear processing state
           stopCamera(); // Stop camera after successful registration
           
           // Convert temporary token to full authentication token
@@ -419,20 +497,20 @@ export default function FaceRegistrationPage() {
               // Redirect to dashboard
               setTimeout(() => {
                 window.location.href = "/pages/dashboard";
-              }, 3500);
+              }, 2000); // Reduced timeout since loading states are now cleared
             } else {
               console.error("Token conversion failed");
               // Fallback redirect
               setTimeout(() => {
                 window.location.href = "/pages/dashboard";
-              }, 3500);
+              }, 2000); // Reduced timeout since loading states are now cleared
             }
           } catch (convertError) {
             console.error("Error converting token:", convertError);
             // Fallback redirect
             setTimeout(() => {
               window.location.href = "/pages/dashboard";
-            }, 3500);
+            }, 2000); // Reduced timeout since loading states are now cleared
           }
         } else {
           if (res.status === 409) {

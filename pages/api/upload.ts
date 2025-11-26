@@ -92,6 +92,13 @@ export default async function handler(
           folder: "botosafe/candidates",
           resource_type: "auto",
           timeout: 60000, // 60 second timeout
+          // Ensure files are publicly accessible
+          access_mode: "public",
+          invalidate: true,
+          // Force inline display for PDFs
+          transformation: {
+            flags: "attachment:false"
+          }
         });
 
         // Delete temporary file

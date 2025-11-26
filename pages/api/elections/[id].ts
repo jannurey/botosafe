@@ -77,20 +77,19 @@ export default async function handler(
         filing_end_time,
       } = req.body as Partial<Election>;
 
-      // Ensure times are properly formatted as ISO strings
+      // Store times exactly as received from the frontend
       const formatTime = (time: string | null | undefined) => {
         if (!time) return null;
-        try {
-          // If it's already an ISO string, use it as is
-          if (time.includes('T') && time.includes('Z')) {
-            return time;
-          }
-          // Otherwise, parse and convert to ISO
-          return new Date(time).toISOString();
-        } catch (error) {
-          console.error("Error formatting time:", error);
-          return null;
+        
+        // For datetime-local values (YYYY-MM-DDTHH:mm), convert to PostgreSQL format
+        if (time.includes('T') && !time.includes('Z')) {
+          // Simply replace T with space and add seconds
+          // This ensures the exact time is stored without timezone conversion
+          return time.replace('T', ' ') + ':00';
         }
+        
+        // For other formats, return as-is
+        return time;
       };
 
       const { error: updateError } = await supabaseAdmin

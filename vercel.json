@@ -11,10 +11,6 @@
     "pages/api/verify-face.ts": {
       "maxDuration": 30,
       "memory": 2048
-    },
-    "pages/api/test-face-recognition/check-all.ts": {
-      "maxDuration": 60,
-      "memory": 2048
     }
   },
   "env": {

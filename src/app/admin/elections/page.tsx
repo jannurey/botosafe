@@ -24,17 +24,58 @@ type Partylist = {
   updated_at: string;
 };
 
+// Add type for batch positions
+type NewPosition = {
+  name: string;
+  election_id: number | "";
+};
+
+// Add a function to parse datetime-local strings properly
+const parseLocalDateTime = (dateStr: string) => {
+  if (!dateStr) return new Date();
+  
+  try {
+    // Handle datetime strings with timezone info (from database)
+    // Strip timezone and treat as local time
+    if (dateStr.includes('T') && (dateStr.includes('+') || dateStr.includes('Z'))) {
+      // Remove timezone suffix (e.g., +00:00 or Z)
+      const withoutTz = dateStr.replace(/[+-]\d{2}:\d{2}$/, '').replace('Z', '');
+      const [datePart, timePart] = withoutTz.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes, seconds] = timePart.split(':').map(Number);
+      // Create date in local timezone (month is 0-indexed)
+      return new Date(year, month - 1, day, hours, minutes, seconds || 0);
+    }
+    
+    // Handle datetime-local format (YYYY-MM-DDTHH:mm)
+    if (dateStr.includes('T') && !dateStr.includes('Z')) {
+      const [datePart, timePart] = dateStr.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      // Create date in local timezone (month is 0-indexed)
+      return new Date(year, month - 1, day, hours, minutes);
+    }
+    
+    // For other formats, use parseISO
+    const date = parseISO(dateStr);
+    return date;
+  } catch (error) {
+    console.error("Error parsing date:", error);
+    return new Date();
+  }
+};
+
 // Add a function to compute the current status
 const computeStatus = (election: Election) => {
   const now = new Date();
   const filingStart = election.filing_start_time
-    ? new Date(election.filing_start_time)
+    ? parseLocalDateTime(election.filing_start_time)
     : null;
   const filingEnd = election.filing_end_time 
-    ? new Date(election.filing_end_time) 
+    ? parseLocalDateTime(election.filing_end_time) 
     : null;
-  const start = new Date(election.start_time);
-  const end = new Date(election.end_time);
+  const start = parseLocalDateTime(election.start_time);
+  const end = parseLocalDateTime(election.end_time);
 
   if (filingStart && now >= filingStart && filingEnd && now <= filingEnd)
     return "filing";
@@ -61,11 +102,14 @@ export default function ElectionsPage() {
   const [filingEndTime, setFilingEndTime] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // position fields
+  // position fields (single position)
   const [selectedElectionId, setSelectedElectionId] = useState("");
   const [positionName, setPositionName] = useState("");
   const [posLoading, setPosLoading] = useState(false);
-
+  
+  // batch position fields
+  const [newPositions, setNewPositions] = useState<NewPosition[]>([{ name: "", election_id: "" }]);
+  
   // partylist fields
   const [partylistName, setPartylistName] = useState("");
   const [partylistDescription, setPartylistDescription] = useState("");
@@ -100,9 +144,30 @@ export default function ElectionsPage() {
     if (!dateStr) return "";
     
     try {
-      // Since we store times as the user selected them (without timezone conversion),
-      // we can directly use the stored string for the input
-      return dateStr.replace(' ', 'T').substring(0, 16);
+      // Handle datetime strings with timezone info (from database)
+      // Strip timezone and treat as local time
+      if (dateStr.includes('T') && (dateStr.includes('+') || dateStr.includes('Z'))) {
+        // Remove timezone suffix (e.g., +00:00 or Z)
+        const withoutTz = dateStr.replace(/[+-]\d{2}:\d{2}$/, '').replace('Z', '');
+        // Return in YYYY-MM-DDTHH:mm format
+        return withoutTz.substring(0, 16);
+      }
+      
+      // For datetime-local format (YYYY-MM-DDTHH:mm), return as-is
+      if (dateStr.includes('T') && !dateStr.includes('Z')) {
+        return dateStr;
+      }
+      
+      // For other formats, we need to convert to local time format
+      const date = parseISO(dateStr);
+      // Format as YYYY-MM-DDTHH:mm in local time
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
     } catch (error) {
       console.error("Error formatting date for input:", error);
       return "";
@@ -113,12 +178,10 @@ export default function ElectionsPage() {
   const handleSaveElection = async () => {
     setLoading(true);
 
-    // Format the times properly for the backend
-    // We store the exact time the user selected without timezone conversion
+    // Store the exact time the user selected without any conversion
     const formatForStorage = (localTime: string) => {
       if (!localTime) return null;
-      // Simply return the local time string as-is
-      // This preserves the exact time the user selected
+      // Return the local time string as-is
       return localTime;
     };
 
@@ -146,29 +209,6 @@ export default function ElectionsPage() {
       closeElectionModal();
     }
     setLoading(false);
-  };
-
-  // Save position
-  const handleSavePosition = async () => {
-    if (!selectedElectionId || !positionName) return;
-    setPosLoading(true);
-
-    const res = await fetch("/api/positions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        election_id: Number(selectedElectionId),
-        name: positionName,
-      }),
-    });
-
-    if (res.ok) {
-      setSelectedElectionId("");
-      setPositionName("");
-      setIsPositionModalOpen(false);
-    }
-
-    setPosLoading(false);
   };
 
   // Save partylist
@@ -268,6 +308,71 @@ export default function ElectionsPage() {
     setSelectedElectionForPartylist(null);
   };
 
+  // Batch position handlers
+  const addNewPositionField = () => {
+    // Inherit the election_id from the first position if it's selected
+    const defaultElectionId = newPositions.length > 0 ? newPositions[0].election_id : "";
+    setNewPositions([...newPositions, { name: "", election_id: defaultElectionId }]);
+  };
+
+  const removeNewPositionField = (index: number) => {
+    if (newPositions.length > 1) {
+      const updatedPositions = [...newPositions];
+      updatedPositions.splice(index, 1);
+      setNewPositions(updatedPositions);
+    }
+  };
+
+  const updateNewPositionField = (index: number, field: keyof NewPosition, value: string | number) => {
+    const updatedPositions = [...newPositions];
+    updatedPositions[index] = { ...updatedPositions[index], [field]: value };
+    
+    // If we're updating the election_id of the first position, update all other positions too
+    if (index === 0 && field === "election_id") {
+      for (let i = 1; i < updatedPositions.length; i++) {
+        updatedPositions[i].election_id = value as number | "";
+      }
+    }
+    
+    setNewPositions(updatedPositions);
+  };
+
+  // Save batch positions
+  const handleSaveBatchPositions = async () => {
+    const validPositions = newPositions.filter(pos => pos.name && pos.election_id);
+    
+    if (validPositions.length === 0) {
+      alert("Please add at least one valid position.");
+      return;
+    }
+
+    setPosLoading(true);
+
+    try {
+      const res = await fetch("/api/positions/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positions: validPositions }),
+      });
+
+      if (res.ok) {
+        setSelectedElectionId("");
+        setPositionName("");
+        setIsPositionModalOpen(false);
+        setNewPositions([{ name: "", election_id: "" }]); // Reset batch positions
+      } else {
+        const errorData = await res.json();
+        console.error("Failed to save positions:", errorData.error);
+        alert(`Failed to save positions: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error("Failed to save positions:", error);
+      alert("An error occurred while saving positions");
+    }
+
+    setPosLoading(false);
+  };
+
   // Prevent background scrolling when modal is open
   useEffect(() => {
     if (isElectionModalOpen || isPositionModalOpen || isPartylistModalOpen) {
@@ -347,14 +452,14 @@ export default function ElectionsPage() {
                   <td className="px-3 md:px-4 py-2 md:py-3 text-gray-700" data-label="Filing Period">
                     {e.filing_start_time
                       ? `${format(
-                          parseISO(e.filing_start_time),
+                          parseLocalDateTime(e.filing_start_time),
                           "PPP"
-                        )} - ${format(parseISO(e.filing_end_time!), "PPP")}`
+                        )} - ${format(parseLocalDateTime(e.filing_end_time!), "PPP")}`
                       : "N/A"}
                   </td>
                   <td className="px-3 md:px-4 py-2 md:py-3 text-gray-700" data-label="Voting Period">
-                    {format(parseISO(e.start_time), "PPP")} -{" "}
-                    {format(parseISO(e.end_time), "PPP")}
+                    {format(parseLocalDateTime(e.start_time), "PPP")} -{" "}
+                    {format(parseLocalDateTime(e.end_time), "PPP")}
                   </td>
                   <td className="px-3 md:px-4 py-2 md:py-3 text-center align-middle" data-label="Status">
                     <span
@@ -511,18 +616,19 @@ export default function ElectionsPage() {
             <div className="modal-content relative bg-white p-6 rounded-2xl shadow-2xl max-w-lg w-full mx-4 border border-gray-200">
               <div className="text-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                  Create Position
+                  Create Multiple Positions
                 </h2>
               </div>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Election
+                {/* Global Election Selection */}
+                <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <label className="block text-sm font-medium text-purple-700 mb-1">
+                    Election (applies to all positions)
                   </label>
                   <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 outline-none text-gray-800"
-                    value={selectedElectionId}
-                    onChange={(e) => setSelectedElectionId(e.target.value)}
+                    className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 outline-none text-gray-800"
+                    value={newPositions[0]?.election_id || ""}
+                    onChange={(e) => updateNewPositionField(0, "election_id", Number(e.target.value))}
                   >
                     <option value="">-- Select Election --</option>
                     {elections.map((e) => (
@@ -532,32 +638,58 @@ export default function ElectionsPage() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Position Name
+                
+                {/* Position Names Container */}
+                <div className="border rounded-lg p-3 bg-gray-50">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Position Names
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Position Name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 outline-none text-gray-800"
-                    value={positionName}
-                    onChange={(e) => setPositionName(e.target.value)}
-                  />
+                  <div className={`${newPositions.length > 3 ? 'max-h-60 overflow-y-auto space-y-2' : 'space-y-2'}`}>
+                    {newPositions.map((pos, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder={`Position ${index + 1} Name`}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 outline-none text-gray-800"
+                          value={pos.name}
+                          onChange={(e) => updateNewPositionField(index, "name", e.target.value)}
+                        />
+                        {newPositions.length > 1 && (
+                          <button
+                            onClick={() => removeNewPositionField(index)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                            title="Remove Position"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={addNewPositionField}
+                    className="mt-3 flex items-center gap-1 text-purple-600 hover:text-purple-800 text-sm"
+                  >
+                    + Add Another Position
+                  </button>
                 </div>
               </div>
               <div className="mt-6 flex justify-end gap-3">
                 <button
-                  onClick={() => setIsPositionModalOpen(false)}
+                  onClick={() => {
+                    setIsPositionModalOpen(false);
+                    setNewPositions([{ name: "", election_id: "" }]); // Reset batch positions
+                  }}
                   className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-all duration-200"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleSavePosition}
+                  onClick={handleSaveBatchPositions}
                   disabled={posLoading}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg shadow hover:bg-purple-700 font-medium transition-all duration-200 disabled:opacity-50"
                 >
-                  {posLoading ? "Saving..." : "Save"}
+                  {posLoading ? "Saving..." : "Save All Positions"}
                 </button>
               </div>
             </div>
@@ -567,103 +699,105 @@ export default function ElectionsPage() {
         {/* Partylist Modal */}
         {isPartylistModalOpen && selectedElectionForPartylist && (
           <div className="modal-overlay flex items-center justify-center">
-            <div className="modal-content relative bg-white p-6 rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-gray-200">
+            <div className="modal-content relative bg-white p-6 rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-gray-200 max-h-[90vh] flex flex-col">
               <div className="text-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">
                   Manage Partylists for &quot;{selectedElectionForPartylist.title}&quot;
                 </h2>
               </div>
               
-              {/* Partylist Form */}
-              <div className="space-y-4 mb-6 p-4 bg-gray-50 rounded-lg">
-                <h3 className="text-lg font-semibold text-gray-800">
-                  {editingPartylist ? "Edit Partylist" : "Add New Partylist"}
-                </h3>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Partylist Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Partylist Name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none text-gray-800"
-                    value={partylistName}
-                    onChange={(e) => setPartylistName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description (Optional)
-                  </label>
-                  <textarea
-                    placeholder="Partylist Description"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none text-gray-800"
-                    value={partylistDescription}
-                    onChange={(e) => setPartylistDescription(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-                <div className="flex justify-end gap-3">
-                  {editingPartylist && (
+              <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+                {/* Partylist Form */}
+                <div className="space-y-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    {editingPartylist ? "Edit Partylist" : "Add New Partylist"}
+                  </h3>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Partylist Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Partylist Name"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none text-gray-800"
+                      value={partylistName}
+                      onChange={(e) => setPartylistName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description (Optional)
+                    </label>
+                    <textarea
+                      placeholder="Partylist Description"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none text-gray-800"
+                      value={partylistDescription}
+                      onChange={(e) => setPartylistDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    {editingPartylist && (
+                      <button
+                        onClick={() => {
+                          setEditingPartylist(null);
+                          setPartylistName("");
+                          setPartylistDescription("");
+                        }}
+                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-all duration-200"
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
                     <button
-                      onClick={() => {
-                        setEditingPartylist(null);
-                        setPartylistName("");
-                        setPartylistDescription("");
-                      }}
-                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-all duration-200"
+                      onClick={handleSavePartylist}
+                      disabled={partylistLoading}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 font-medium transition-all duration-200 disabled:opacity-50"
                     >
-                      Cancel Edit
+                      {partylistLoading ? "Saving..." : editingPartylist ? "Update" : "Add Partylist"}
                     </button>
+                  </div>
+                </div>
+                
+                {/* Partylists List */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Existing Partylists</h3>
+                  {partylists.length > 0 ? (
+                    <div className="space-y-3 max-h-80 overflow-y-auto">
+                      {partylists.map((p) => (
+                        <div key={p.id} className="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg">
+                          <div>
+                            <div className="font-medium text-gray-900">{p.name}</div>
+                            {p.description && (
+                              <div className="text-sm text-gray-600 mt-1">{p.description}</div>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEditPartylist(p)}
+                              className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeletePartylist(p.id)}
+                              className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-gray-500">
+                      No partylists created yet for this election
+                    </div>
                   )}
-                  <button
-                    onClick={handleSavePartylist}
-                    disabled={partylistLoading}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 font-medium transition-all duration-200 disabled:opacity-50"
-                  >
-                    {partylistLoading ? "Saving..." : editingPartylist ? "Update" : "Add Partylist"}
-                  </button>
                 </div>
               </div>
               
-              {/* Partylists List */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Existing Partylists</h3>
-                {partylists.length > 0 ? (
-                  <div className="space-y-3 max-h-60 overflow-y-auto">
-                    {partylists.map((p) => (
-                      <div key={p.id} className="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg">
-                        <div>
-                          <div className="font-medium text-gray-900">{p.name}</div>
-                          {p.description && (
-                            <div className="text-sm text-gray-600 mt-1">{p.description}</div>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEditPartylist(p)}
-                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeletePartylist(p.id)}
-                            className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-gray-500">
-                    No partylists created yet for this election
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex justify-end">
+              <div className="flex justify-end pt-4 border-t border-gray-200">
                 <button
                   onClick={closePartylistModal}
                   className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-all duration-200"

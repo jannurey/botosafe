@@ -520,7 +520,7 @@ export default function FaceScanVotePage() {
         const detection = await faceapi
           .detectSingleFace(
             video,
-            new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 })
+            new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3, inputSize: 224 })
           )
           .withFaceLandmarks();
 
@@ -623,7 +623,7 @@ export default function FaceScanVotePage() {
                 (async () => {
                   try {
                     const detection = await faceapi
-                      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
                       .withFaceLandmarks()
                       .withFaceDescriptor();
 

@@ -21,6 +21,7 @@ CREATE TABLE users (
   can_vote BOOLEAN DEFAULT FALSE,
   last_login_at TIMESTAMP NULL,
   approved_at TIMESTAMP NULL,
+  must_change_password BOOLEAN DEFAULT TRUE, -- New column to track first-time login, default TRUE for existing users
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

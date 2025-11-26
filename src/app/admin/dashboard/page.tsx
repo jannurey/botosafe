@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { format } from "date-fns";
 import {
   VictoryBar,
   VictoryChart,
@@ -43,7 +44,6 @@ type Summary = {
 const AdminDashboard: React.FC = () => {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [results, setResults] = useState<Result[]>([]);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [phase, setPhase] = useState<"before" | "ongoing" | "ended">("before");
 
   const fetchData = async (): Promise<void> => {
@@ -83,20 +83,27 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!summary?.election) return;
-    const startMs = new Date(summary.election.start_time).getTime();
-    const endMs = new Date(summary.election.end_time).getTime();
+    
+    // Parse timestamps as local time by stripping timezone info
+    const parseLocalTime = (dateStr: string) => {
+      const withoutTz = dateStr.replace(/[+-]\d{2}:\d{2}$/, '').replace('Z', '');
+      const [datePart, timePart] = withoutTz.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes, seconds] = timePart.split(':').map(Number);
+      return new Date(year, month - 1, day, hours, minutes, seconds || 0);
+    };
+    
+    const startMs = parseLocalTime(summary.election.start_time).getTime();
+    const endMs = parseLocalTime(summary.election.end_time).getTime();
 
     const tick = (): void => {
       const now = Date.now();
       if (now < startMs) {
         setPhase("before");
-        setTimeLeft(Math.floor((startMs - now) / 1000));
       } else if (now <= endMs) {
         setPhase("ongoing");
-        setTimeLeft(Math.floor((endMs - now) / 1000));
       } else {
         setPhase("ended");
-        setTimeLeft(0);
       }
     };
 
@@ -105,16 +112,21 @@ const AdminDashboard: React.FC = () => {
     return () => window.clearInterval(id);
   }, [summary?.election]);
 
-  const formatTime = (secs: number | null): string => {
-    if (secs === null) return "--:--:--";
-    if (secs <= 0) return "00:00:00";
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    const hh = String(h).padStart(2, "0");
-    const mm = String(m).padStart(2, "0");
-    const ss = String(s).padStart(2, "0");
-    return `${hh} : ${mm} : ${ss}`;
+  // Format election time for display
+  const formatElectionTime = (dateStr: string) => {
+    try {
+      // Strip timezone and treat as local time
+      const withoutTz = dateStr.replace(/[+-]\d{2}:\d{2}$/, '').replace('Z', '');
+      const [datePart, timePart] = withoutTz.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes, seconds] = timePart.split(':').map(Number);
+      const date = new Date(year, month - 1, day, hours, minutes, seconds || 0);
+      
+      return format(date, "MMM d, yyyy - h:mm a");
+    } catch (error) {
+      console.error("Error formatting election time:", error);
+      return "Invalid date";
+    }
   };
 
   const groupedResults = results.reduce<Record<string, Result[]>>((acc, r) => {
@@ -333,30 +345,38 @@ const AdminDashboard: React.FC = () => {
           ))}
 
           <div className="bg-white shadow-lg rounded-xl p-4 flex flex-col items-center justify-center transition-transform hover:scale-105">
-            <div className="text-2xl mb-2">⏰</div>
-            {phase === "before" && (
-              <>
-                <div className="text-sm text-gray-600 font-medium uppercase text-center">
-                  Voting not started
+            <div className="text-2xl mb-3 text-center">⏰</div>
+            {phase === "before" && summary?.election && (
+              <div className="flex flex-col items-center justify-center flex-grow">
+                <div className="text-sm text-gray-600 font-medium text-center mb-1">
+                  Election will start at
                 </div>
-                <div className="mt-1 font-bold text-[#791010] text-lg text-center">
-                  Starts in: {formatTime(timeLeft)}
+                <div className="font-bold text-[#791010] text-2xl md:text-3xl text-center">
+                  {formatElectionTime(summary.election.start_time).split(' - ')[1]}
                 </div>
-              </>
+                <div className="text-xs text-gray-500 text-center mt-1">
+                  {formatElectionTime(summary.election.start_time).split(' - ')[0]}
+                </div>
+              </div>
             )}
-            {phase === "ongoing" && (
-              <>
-                <div className="text-sm text-gray-600 font-medium uppercase text-center">
-                  Time remaining
+            {phase === "ongoing" && summary?.election && (
+              <div className="flex flex-col items-center justify-center flex-grow">
+                <div className="text-sm text-gray-600 font-medium text-center mb-1">
+                  Election ends at
                 </div>
-                <div className="mt-1 font-bold text-[#791010] text-lg text-center">
-                  {formatTime(timeLeft)}
+                <div className="font-bold text-[#791010] text-2xl md:text-3xl text-center">
+                  {formatElectionTime(summary.election.end_time).split(' - ')[1]}
                 </div>
-              </>
+                <div className="text-xs text-gray-500 text-center mt-1">
+                  {formatElectionTime(summary.election.end_time).split(' - ')[0]}
+                </div>
+              </div>
             )}
             {phase === "ended" && (
-              <div className="text-lg font-bold text-gray-700 text-center">
-                🛑 Voting has ended
+              <div className="flex flex-col items-center justify-center flex-grow">
+                <div className="text-lg font-bold text-gray-700 text-center">
+                  🛑 Voting has ended
+                </div>
               </div>
             )}
           </div>
