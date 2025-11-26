@@ -14,7 +14,6 @@ export function getRedis(): Redis | null {
   client = new Redis(url);
   // Optional: attach error logging
   client.on("error", (err) => {
-    // eslint-disable-next-line no-console
     console.error("Redis error:", err);
   });
   return client;

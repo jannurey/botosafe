@@ -45,6 +45,10 @@ export default function VotersPage() {
     voter: Voter | null;
     formData: EditVoterForm;
   }>({ isOpen: false, voter: null, formData: {} as EditVoterForm });
+  
+  // Add pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const votersPerPage = 10;
 
   useEffect(() => {
     // Prevent background scrolling when modal is open
@@ -272,6 +276,16 @@ export default function VotersPage() {
       
     return isVoter && matchesSearch && matchesYear;
   });
+  
+  // Pagination logic
+  const indexOfLastVoter = currentPage * votersPerPage;
+  const indexOfFirstVoter = indexOfLastVoter - votersPerPage;
+  const currentVoters = filteredVoters.slice(indexOfFirstVoter, indexOfLastVoter);
+  const totalPages = Math.ceil(filteredVoters.length / votersPerPage);
+
+  const handlePageChange = (pageNumber: number) => {
+    setCurrentPage(pageNumber);
+  };
 
   return (
     <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
@@ -322,9 +336,9 @@ export default function VotersPage() {
           </div>
         </div>
 
-        {/* Table - Made responsive without horizontal scrolling */}
+        {/* Table - Made responsive with pagination */}
         <div className="bg-white shadow-xl rounded-xl border border-gray-200 overflow-hidden">
-          <div className="overflow-x-hidden">
+          <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs">
               <thead className="bg-gradient-to-r from-[#791010] to-[#5a0c0c] text-white">
                 <tr>
@@ -339,7 +353,7 @@ export default function VotersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredVoters.map((voter, idx) => (
+                {currentVoters.map((voter, idx) => (
                   <tr
                     key={voter.id}
                     className={`border-b border-gray-100 hover:bg-gray-50 transition-all ${
@@ -440,7 +454,7 @@ export default function VotersPage() {
                     </td>
                   </tr>
                 ))}
-                {filteredVoters.length === 0 && (
+                {currentVoters.length === 0 && (
                   <tr>
                     <td
                       colSpan={8}
@@ -457,6 +471,30 @@ export default function VotersPage() {
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination Controls */}
+          {filteredVoters.length > votersPerPage && (
+            <div className="flex justify-between items-center p-4 border-t border-gray-200">
+              <div className="text-sm text-gray-600">
+                Showing {indexOfFirstVoter + 1}-{Math.min(indexOfLastVoter, filteredVoters.length)} of {filteredVoters.length} voters
+              </div>
+              <div className="flex space-x-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => handlePageChange(page)}
+                    className={`px-3 py-1 rounded ${
+                      currentPage === page
+                        ? "bg-[#791010] text-white"
+                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

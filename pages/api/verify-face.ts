@@ -105,7 +105,7 @@ export default async function handler(
     
     // Compare incoming embedding against all stored embeddings
     let maxSimilarity = 0;
-    let allSimilarities: number[] = [];
+    const allSimilarities: number[] = [];
     for (const storedEmb of storedEmbeddings) {
       const sim = cosineSimilarity(normalized, storedEmb);
       allSimilarities.push(sim);

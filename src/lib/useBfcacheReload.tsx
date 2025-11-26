@@ -6,7 +6,6 @@ export default function useBfcacheReload(): void {
   useEffect(() => {
     const onPageShow = (e: PageTransitionEvent) => {
       // debug log (remove in production if desired)
-      // eslint-disable-next-line no-console
       console.debug("pageshow event, persisted:", e.persisted);
       if (e.persisted) {
         // Force a reload so middleware and server auth checks run.
@@ -17,7 +16,6 @@ export default function useBfcacheReload(): void {
 
     const onPopState = () => {
       // Back/Forward navigation: reload to ensure server-side auth check happens.
-      // eslint-disable-next-line no-console
       console.debug("popstate event - forcing reload to revalidate auth");
       window.location.reload();
     };

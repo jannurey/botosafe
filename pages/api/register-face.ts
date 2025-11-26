@@ -196,8 +196,8 @@ export default async function handler(
         // Compare all new embeddings to stored embeddings
         let maxSimilarity = 0;
         let identicalEmbeddingsFound = false;
-        let similarityDetails: {newIndex: number, storedIndex: number, similarity: number}[] = [];
-        let allSimilarities: number[] = [];
+        const similarityDetails: {newIndex: number, storedIndex: number, similarity: number}[] = [];
+        const allSimilarities: number[] = [];
         
         for (let newIdx = 0; newIdx < processedEmbeddings.length; newIdx++) {
           const newEmb = processedEmbeddings[newIdx];

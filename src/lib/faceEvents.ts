@@ -141,7 +141,6 @@ export async function logFaceVerificationEvent(opts: {
   } catch (e: unknown) {
     // Handle FK race (parent deleted after exists-check) or other FK violations
     // Swallow: logging must not affect main flow
-    // eslint-disable-next-line no-console
     console.warn(
       "Failed to log face_verification_event:",
       e instanceof Error ? e.message : String(e)
