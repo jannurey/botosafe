@@ -67,7 +67,8 @@ export default function FaceRegistrationPage() {
   // Add state to track if face is already registered (duplicate detected)
   const [duplicateFaceDetected, setDuplicateFaceDetected] = useState(false);
 
-  const SCAN_DURATION = 5; // Seconds to scan face
+  // Shorter scan duration for better UX while still capturing enough data
+  const SCAN_DURATION = 3; // Seconds to scan face
   const MIN_BRIGHTNESS = 50;
   const MAX_BRIGHTNESS = 200;
   const OPTIMAL_BRIGHTNESS_MIN = 70;
@@ -303,7 +304,9 @@ export default function FaceRegistrationPage() {
 
       // Capture multiple face samples
       const embeddings: number[][] = [];
-      const maxSamples = 5; // Capture up to 5 samples
+      // Capture fewer high‑quality samples to reduce scan time (3 is enough,
+      // server will still enforce uniqueness and quality)
+      const maxSamples = 3; // Capture up to 3 samples
       
       // Helper function to capture a unique embedding from a new frame
       const captureUniqueEmbedding = async (prevEmbeddings: number[][]): Promise<number[] | null> => {

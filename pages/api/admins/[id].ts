@@ -131,10 +131,9 @@ export default async function handler(
         updated_at: new Date().toISOString()
       };
 
-      // If password is provided, hash it and clear the must_change_password flag
+      // If password is provided, hash it
       if (password) {
         updateData.password = await bcrypt.hash(password, 10);
-        updateData.must_change_password = false; // Clear the flag after password change
       }
 
       const { error: updateError } = await supabaseAdmin

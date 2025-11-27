@@ -411,6 +411,48 @@ export default async function handler(
           return;
         }
 
+        // Before inserting, ensure the election is currently in its filing period
+        const { data: electionRows, error: electionError } = await supabaseAdmin
+          .from('elections')
+          .select('*')
+          .eq('id', election_id)
+          .single();
+
+        if (electionError || !electionRows) {
+          console.error("Supabase election query error:", electionError);
+          res.status(400).json({ error: "Invalid election for candidacy filing." });
+          return;
+        }
+
+        const election = electionRows as {
+          start_time: string;
+          end_time: string;
+          filing_start_time?: string | null;
+          filing_end_time?: string | null;
+          status?: string;
+        };
+
+        const now = new Date();
+        const filingStart = election.filing_start_time ? new Date(election.filing_start_time) : null;
+        const filingEnd = election.filing_end_time ? new Date(election.filing_end_time) : null;
+        const start = new Date(election.start_time);
+        const end = new Date(election.end_time);
+
+        // Determine if filing is currently allowed:
+        // - If both filing_start_time and filing_end_time are set, use that window.
+        // - If filing dates are not specified, allow filing during the main election period (start..end).
+        let filingAllowed = false;
+        if (filingStart && filingEnd) {
+          filingAllowed = now >= filingStart && now <= filingEnd;
+        } else {
+          filingAllowed = now >= start && now <= end;
+        }
+
+        if (!filingAllowed) {
+          res.status(400).json({ error: "Filing period is closed for this election." });
+          return;
+        }
+
         // Insert candidate
         const { data: insertResult, error: insertError } = await supabaseAdmin
           .from('candidates')

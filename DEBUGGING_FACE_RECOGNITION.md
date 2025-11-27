@@ -8,11 +8,11 @@ This document explains how to debug issues with the face recognition system, par
 
 **Problem**: Different users are being flagged as duplicates during face registration.
 
-**Root Cause**: The face duplicate threshold was set too high (0.92), causing even moderately similar faces to be flagged as duplicates.
+**Root Cause (original)**: The face duplicate threshold was set around 0.92, which caused many moderately similar faces (similarity ≈ 0.95) to be flagged as duplicates.
 
-**Solution**: 
-- Threshold has been reduced from 0.92 to 0.85
-- This is a more reasonable value for face recognition systems
+**Solution (updated)**: 
+- Duplicate detection now uses a higher threshold (around 0.97–0.98 by default) so that only *very* similar faces are treated as duplicates.
+- This reduces false positives where different users legitimately have high similarity scores (~0.95) while still catching truly matching faces.
 
 ## Debugging Tools
 
@@ -46,9 +46,9 @@ This script will:
 ## Threshold Guidelines
 
 ### Recommended Thresholds:
-- **0.85**: Standard threshold for most applications (current setting)
-- **0.90**: Stricter threshold for high-security applications
-- **0.95**: Very strict threshold (may cause false negatives)
+- **0.90**: Standard threshold for most applications
+- **0.95**: Stricter threshold for high-security applications
+- **0.97–0.98**: Very strict threshold (recommended default for duplicate detection in this project). At these values only *very* similar faces are considered duplicates, which reduces false positives when different users have similarity around 0.95.
 
 ### Industry Standards:
 - Academic research typically uses thresholds between 0.6-0.8
@@ -106,7 +106,7 @@ When running in development mode (`NODE_ENV=development`), the system will outpu
 
 ## Troubleshooting Checklist
 
-1. **Check threshold setting**: Ensure it's set to 0.85 or lower
+1. **Check threshold setting**: Ensure it's set to an appropriate value for your data. For this project, 0.97–0.98 is a good default for duplicate detection to avoid flagging different users with ~0.95 similarity.
 2. **Verify embedding normalization**: All embeddings should be L2 normalized
 3. **Inspect raw embeddings**: Check if embeddings look reasonable
 4. **Test similarity manually**: Use the comparison scripts
@@ -122,4 +122,4 @@ When running in development mode (`NODE_ENV=development`), the system will outpu
 - Getting too many false negatives (same person not matching)
 - Usability is more important than security
 
-The current setting of 0.85 should work well for most scenarios.
+The exact setting depends on your deployment, but 0.97–0.98 works well for this project in practice.

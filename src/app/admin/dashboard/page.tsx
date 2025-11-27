@@ -45,6 +45,7 @@ const AdminDashboard: React.FC = () => {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [phase, setPhase] = useState<"before" | "ongoing" | "ended">("before");
+  const [showElectionHeader, setShowElectionHeader] = useState(true);
 
   const fetchData = async (): Promise<void> => {
     try {
@@ -258,127 +259,82 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-gray-50 min-h-screen">
-      {summary?.election && (
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center text-[#791010] bg-white rounded-xl p-4 md:p-6 shadow">
-          {summary.election.title} <span className="text-gray-600">({summary.election.status.toUpperCase()})</span>
-        </h1>
+      {summary?.election && showElectionHeader && (
+        <div className="bg-white rounded-xl p-4 md:p-6 shadow flex items-center justify-between">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[#791010]">
+            {summary.election.title}{" "}
+            <span className="text-gray-600">
+              ({summary.election.status.toUpperCase()})
+            </span>
+          </h1>
+          <button
+            type="button"
+            onClick={() => setShowElectionHeader(false)}
+            className="ml-4 text-gray-400 hover:text-gray-600 text-xl font-bold leading-none"
+            aria-label="Hide election banner"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <a 
-          href="/admin/voters" 
-          className="bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
-        >
-          <div className="text-2xl mb-2">👥</div>
-          <div className="text-sm font-semibold">Manage Voters</div>
-        </a>
-        <a 
-          href="/admin/candidates" 
-          className="bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
-        >
-          <div className="text-2xl mb-2">🏆</div>
-          <div className="text-sm font-semibold">Manage Candidates</div>
-        </a>
-        <a 
-          href="/admin/elections" 
-          className="bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
-        >
-          <div className="text-2xl mb-2">🗳️</div>
-          <div className="text-sm font-semibold">Manage Elections</div>
-        </a>
-        <a 
-          href="/admin/settings" 
-          className="bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
-        >
-          <div className="text-2xl mb-2">⚙️</div>
-          <div className="text-sm font-semibold">Settings</div>
-        </a>
-      </div>
-
-      {/* --- Voter Stats --- */}
+      {/* --- Voter Stats (compact cards) --- */}
       {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: "VOTERS", value: summary.voters, color: "#D32F2F", icon: "👥" },
-            {
-              label: "CANDIDATES",
-              value: summary.candidates,
-              color: "#1976D2",
-              icon: "👤"
-            },
-            {
-              label: "TOTAL WHO VOTED",
-              value: summary.voted,
-              color: "#388E3C",
-              icon: "✅",
-              remainder: Math.max(summary.voters - summary.voted, 0),
-            },
-          ].map((item, i) => (
-            <div
-              key={i}
-              className="bg-white shadow-lg rounded-xl p-4 flex flex-col items-center transition-transform hover:scale-105"
-            >
-              <div className="text-2xl mb-2">{item.icon}</div>
-              <VictoryPie
-                data={[
-                  { x: "val", y: item.value ?? 0 },
-                  {
-                    x: "rem",
-                    y: item.remainder ?? Math.max(1, item.value ?? 0),
-                  },
-                ]}
-                innerRadius={44}
-                labels={() => null}
-                colorScale={[item.color, "#f3f3f3"]}
-                width={140}
-                height={140}
-              />
-              <div
-                className="mt-2 text-xl font-bold"
-                style={{ color: item.color }}
-              >
-                {item.value}
-              </div>
-              <div className="text-sm text-gray-600 font-medium text-center">{item.label}</div>
+        <div className="max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+          {/* Total Who Voted (with percentage) */}
+          <div className="bg-white shadow rounded-xl px-4 py-2 flex items-center gap-3 transition-transform hover:scale-105">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#E8F5E9] text-lg">
+              ✅
             </div>
-          ))}
+            <div className="flex-1 flex flex-col justify-center">
+              <div className="text-xs font-semibold text-gray-500">
+                TOTAL WHO VOTED
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-lg font-extrabold text-[#388E3C]">
+                  {summary.voters > 0
+                    ? `${((summary.voted / summary.voters) * 100).toFixed(1)}%`
+                    : "0.0%"}
+                </span>
+                <span className="text-[11px] text-gray-600">
+                  ({summary.voted} of {summary.voters} voters)
+                </span>
+              </div>
+            </div>
+          </div>
 
-          <div className="bg-white shadow-lg rounded-xl p-4 flex flex-col items-center justify-center transition-transform hover:scale-105">
-            <div className="text-2xl mb-3 text-center">⏰</div>
-            {phase === "before" && summary?.election && (
-              <div className="flex flex-col items-center justify-center flex-grow">
-                <div className="text-sm text-gray-600 font-medium text-center mb-1">
-                  Election will start at
-                </div>
-                <div className="font-bold text-[#791010] text-2xl md:text-3xl text-center">
-                  {formatElectionTime(summary.election.start_time).split(' - ')[1]}
-                </div>
-                <div className="text-xs text-gray-500 text-center mt-1">
-                  {formatElectionTime(summary.election.start_time).split(' - ')[0]}
-                </div>
-              </div>
-            )}
-            {phase === "ongoing" && summary?.election && (
-              <div className="flex flex-col items-center justify-center flex-grow">
-                <div className="text-sm text-gray-600 font-medium text-center mb-1">
-                  Election ends at
-                </div>
-                <div className="font-bold text-[#791010] text-2xl md:text-3xl text-center">
-                  {formatElectionTime(summary.election.end_time).split(' - ')[1]}
-                </div>
-                <div className="text-xs text-gray-500 text-center mt-1">
-                  {formatElectionTime(summary.election.end_time).split(' - ')[0]}
-                </div>
-              </div>
-            )}
-            {phase === "ended" && (
-              <div className="flex flex-col items-center justify-center flex-grow">
-                <div className="text-lg font-bold text-gray-700 text-center">
+          {/* Time / Phase card */}
+          <div className="bg-white shadow rounded-xl px-4 py-2 flex items-center gap-3 transition-transform hover:scale-105">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#FFF3E0] text-lg">
+              ⏰
+            </div>
+            <div className="flex-1 flex flex-col justify-center">
+              {phase === "before" && summary?.election && (
+                <>
+                  <div className="text-xs font-semibold text-gray-500">
+                    Election will start at
+                  </div>
+                  <div className="text-sm font-bold text-[#791010]">
+                    {formatElectionTime(summary.election.start_time)}
+                  </div>
+                </>
+              )}
+              {phase === "ongoing" && summary?.election && (
+                <>
+                  <div className="text-xs font-semibold text-gray-500">
+                    Election ends at
+                  </div>
+                  <div className="text-sm font-bold text-[#791010]">
+                    {formatElectionTime(summary.election.end_time)}
+                  </div>
+                </>
+              )}
+              {phase === "ended" && (
+                <div className="text-sm font-bold text-gray-700">
                   🛑 Voting has ended
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -43,12 +43,11 @@ export default async function handler(
     // Hash the new password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Update user's password and clear the must_change_password flag
+    // Update user's password
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({ 
-        password: hashedPassword,
-        must_change_password: false
+        password: hashedPassword
       })
       .eq('id', userId);
 

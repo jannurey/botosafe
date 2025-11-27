@@ -1,4 +1,16 @@
-import { supabaseAdmin } from "@/configs/supabase";
+import "dotenv/config";
+import { createClient } from "@supabase/supabase-js";
+
+// Load env from .env.local if present (Next.js-style)
+// dotenv/config already reads .env, .env.local etc. when imported above
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env.local or environment to run this script.");
+}
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
  * Debug script to inspect face embeddings in the database

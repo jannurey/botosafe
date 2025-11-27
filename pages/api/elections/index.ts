@@ -75,18 +75,24 @@ export default async function handler(
         filing_end_time,
       } = req.body;
 
-      // Store times exactly as received from the frontend
+      // Store times exactly as received from the frontend, normalizing common formats
       const formatTime = (time: string | null | undefined) => {
         if (!time) return null;
-        
-        // For datetime-local values (YYYY-MM-DDTHH:mm), convert to PostgreSQL format
-        if (time.includes('T') && !time.includes('Z')) {
-          // Simply replace T with space and add seconds
-          // This ensures the exact time is stored without timezone conversion
-          return time.replace('T', ' ') + ':00';
+
+        // Handle datetime-local values (YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss)
+        if (time.includes("T") && !time.includes("Z")) {
+          const [datePart, rawTimePart] = time.split("T");
+          let timePart = rawTimePart;
+
+          // If time has only HH:mm, append :00 seconds; if it already has seconds, keep as is
+          if (/^\d{2}:\d{2}$/.test(timePart)) {
+            timePart = `${timePart}:00`;
+          }
+
+          return `${datePart} ${timePart}`; // e.g. 2025-11-10 17:00:00
         }
-        
-        // For other formats, return as-is
+
+        // For other formats (including already-correct timestamps), return as-is
         return time;
       };
 

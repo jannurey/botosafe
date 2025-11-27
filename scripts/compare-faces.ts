@@ -1,4 +1,15 @@
-import { supabaseAdmin } from "@/configs/supabase";
+import "dotenv/config";
+import { createClient } from "@supabase/supabase-js";
+
+// Load env from .env.local if present (Next.js-style)
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env.local or environment to run this script.");
+}
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
  * Script to compare face embeddings between two specific users
@@ -95,8 +106,11 @@ async function compareFaces(user1Id: number, user2Id: number) {
     console.log(`\n📈 Maximum similarity: ${maxSimilarity.toFixed(4)}`);
     
     // Compare against thresholds
-    const thresholds = [0.85, 0.90, 0.92, 0.95];
-    console.log("\n🎯 Threshold Analysis:");
+    // Note: duplicate detection in production now uses a *high* threshold
+    // (default 0.98) so that only very similar faces are treated as duplicates.
+    // These values let you see how close a pair is relative to that bar.
+    const thresholds = [0.90, 0.95, 0.97, 0.98];
+    console.log("\n🎯 Threshold Analysis (higher = stricter, current default duplicate threshold ≈ 0.98):");
     for (const threshold of thresholds) {
       const match = maxSimilarity >= threshold;
       console.log(`  ${threshold.toFixed(2)}: ${match ? 'MATCH' : 'NO MATCH'}`);

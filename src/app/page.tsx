@@ -36,19 +36,31 @@ const Home: React.FC = () => {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   const [electionStatus, setElectionStatus] = useState<string | null>(null);
 
-  // Function to calculate time remaining
-  const calculateTimeRemaining = (startTime: string) => {
-    const start = new Date(startTime).getTime();
+  // Function to calculate time remaining / status label for authenticated users
+  const calculateTimeRemaining = (startTime: string, endTime?: string) => {
     const now = new Date().getTime();
+    const start = new Date(startTime).getTime();
+    const end = endTime ? new Date(endTime).getTime() : undefined;
+
+    // If we have an end time and it's already passed, the election has ended
+    if (end && now > end) {
+      return "Election has ended.";
+    }
+
     const difference = start - now;
 
     if (difference <= 0) {
+      // Started but not yet ended
       return "Election has started!";
     }
 
     const days = Math.floor(difference / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+    const hours = Math.floor(
+      (difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+    );
+    const minutes = Math.floor(
+      (difference % (1000 * 60 * 60)) / (1000 * 60)
+    );
 
     return `${days} days, ${hours} hours, ${minutes} minutes`;
   };
@@ -174,7 +186,7 @@ const Home: React.FC = () => {
           if (res.ok) {
             const data = await res.json();
             setElectionData(data);
-            setTimeRemaining(calculateTimeRemaining(data.start_time));
+            setTimeRemaining(calculateTimeRemaining(data.start_time, data.end_time));
           }
         } catch (error) {
           console.error("Error fetching election data:", error);
@@ -186,7 +198,9 @@ const Home: React.FC = () => {
       // Update time remaining every minute
       const interval = setInterval(() => {
         if (electionData) {
-          setTimeRemaining(calculateTimeRemaining(electionData.start_time));
+          setTimeRemaining(
+            calculateTimeRemaining(electionData.start_time, electionData.end_time)
+          );
         }
       }, 60000);
 
@@ -194,38 +208,36 @@ const Home: React.FC = () => {
     }
   }, [isAuthenticated, electionData]);
 
-  // Fetch results for unauthenticated users when election is closed
+  // Fetch results when election is closed (used for both unauthenticated and authenticated views)
   useEffect(() => {
-    if (!isAuthenticated) {
-      const fetchResults = async () => {
-        setResultsLoading(true);
-        try {
-          const res = await fetch("/api/results");
-          if (res.ok) {
-            const data: ResultsResponse = await res.json();
-            // Only show results if election is closed
-            if (data.election?.status === "closed") {
-              setResults(data.results);
-            } else {
-              // If election is not closed, explicitly set results to empty array
-              setResults([]);
-            }
+    const fetchResults = async () => {
+      setResultsLoading(true);
+      try {
+        const res = await fetch("/api/results");
+        if (res.ok) {
+          const data: ResultsResponse = await res.json();
+          // Only show results if election is closed
+          if (data.election?.status === "closed") {
+            setResults(data.results);
           } else {
-            // If API returns error, set results to empty array
+            // If election is not closed, explicitly set results to empty array
             setResults([]);
           }
-        } catch (error) {
-          console.error("Error fetching results:", error);
-          // On error, set results to empty array
+        } else {
+          // If API returns error, set results to empty array
           setResults([]);
-        } finally {
-          setResultsLoading(false);
         }
-      };
+      } catch (error) {
+        console.error("Error fetching results:", error);
+        // On error, set results to empty array
+        setResults([]);
+      } finally {
+        setResultsLoading(false);
+      }
+    };
 
-      fetchResults();
-    }
-  }, [isAuthenticated]);
+    fetchResults();
+  }, []);
 
   if (isLoading) {
     return (
@@ -241,17 +253,17 @@ const Home: React.FC = () => {
     // Show content for authenticated users
     return (
       <MainLayout>
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 via-pink-100 to-red-100 px-4 py-20 text-center">
-          <h1 className="text-6xl sm:text-7xl font-extrabold mb-6">
+        <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-purple-100 via-pink-100 to-red-100 px-4 py-20">
+          <h1 className="text-6xl sm:text-7xl font-extrabold mb-6 text-center">
             <span className="text-[#791010]">Boto</span>
             <span className="text-black">Safe</span>
           </h1>
 
-          <p className="text-lg sm:text-xl max-w-2xl mb-10 text-gray-700">
+          <p className="text-lg sm:text-xl max-w-2xl mb-10 text-gray-700 text-center">
             Welcome back! You&apos;re logged in and ready to participate in the election.
           </p>
 
-          <div className="bg-white/80 backdrop-blur-md py-6 px-8 rounded-2xl shadow-xl mb-6 border border-white/40">
+          <div className="bg-white/80 backdrop-blur-md py-6 px-8 rounded-2xl shadow-xl mb-6 border border-white/40 text-center">
             <p className="text-sm text-gray-800 uppercase mb-2">
               Election Status
             </p>
@@ -265,13 +277,113 @@ const Home: React.FC = () => {
             </Link>
           </div>
 
-          <div className="mt-8 text-gray-600 max-w-2xl">
+          <div className="mt-8 text-gray-600 max-w-2xl text-center">
             <p className="mb-4">
               Check the candidates and prepare for voting when the election begins.
             </p>
             <p>
               Visit your dashboard to see your voting status and election information.
             </p>
+          </div>
+
+          {/* Election Results Section for Authenticated Users (when election is closed) */}
+          <div id="results" className="w-full max-w-5xl mt-12">
+            {!resultsLoading && results && results.length > 0 && electionData?.status === "closed" && (
+              <div className="bg-white/90 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-red-200 mb-12">
+                <h2 className="text-3xl font-bold text-[#791010] text-center mb-8">
+                  🎉 Election Results
+                </h2>
+
+                <div className="overflow-x-auto">
+                  {(() => {
+                    // Group results by position
+                    const positions: Record<string, ResultData[]> = {};
+                    results.forEach((result) => {
+                      if (!positions[result.position_name]) {
+                        positions[result.position_name] = [];
+                      }
+                      positions[result.position_name].push(result);
+                    });
+
+                    // Sort positions and candidates
+                    Object.keys(positions).forEach((position) => {
+                      positions[position].sort(
+                        (a, b) => b.vote_count - a.vote_count
+                      );
+                    });
+
+                    return (
+                      <div className="space-y-8">
+                        {Object.entries(positions).map(
+                          ([positionName, candidates]) => (
+                            <div
+                              key={positionName}
+                              className="border-b border-gray-200 pb-6 last:border-0 last:pb-0"
+                            >
+                              <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                                {positionName}
+                              </h3>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {candidates.map((candidate, index) => (
+                                  <div
+                                    key={candidate.candidate_id}
+                                    className={`bg-gradient-to-r rounded-xl p-4 shadow-md ${
+                                      index === 0
+                                        ? "from-yellow-100 to-yellow-50 border-2 border-yellow-300"
+                                        : index === 1
+                                        ? "from-gray-100 to-gray-50 border-2 border-gray-300"
+                                        : index === 2
+                                        ? "from-amber-100 to-amber-50 border-2 border-amber-300"
+                                        : "bg-white border border-gray-200"
+                                    }`}
+                                  >
+                                    <div className="flex justify-between items-center">
+                                      <div>
+                                        <h4 className="font-bold text-lg text-gray-800">
+                                          {candidate.candidate_name}
+                                        </h4>
+                                        {index === 0 && (
+                                          <span className="inline-block bg-yellow-500 text-white text-xs px-2 py-1 rounded-full mt-1">
+                                            🏆 Winner
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="text-2xl font-bold text-[#791010]">
+                                          {candidate.vote_count}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          votes
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="mt-8 text-center">
+                  <p className="text-gray-600">
+                    These results are from the most recently concluded election.
+                  </p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Visit your dashboard to see more detailed election information and analytics.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {resultsLoading && (
+              <div className="bg-white/90 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-red-200 mb-12 text-center">
+                <p className="text-gray-700">Loading election results...</p>
+              </div>
+            )}
           </div>
         </div>
       </MainLayout>

@@ -65,6 +65,7 @@ export default function CandidatesPage() {
   const [formError, setFormError] = useState<string>("");
 
   const [alreadyFiled, setAlreadyFiled] = useState(false);
+  const [canFile, setCanFile] = useState(false);
 
   const modalRef = useRef<HTMLDivElement | null>(null);
 
@@ -191,13 +192,19 @@ export default function CandidatesPage() {
     fetch("/api/elections")
       .then((res) => res.json())
       .then((data: Election[]) => {
-        const ongoing = data.filter((e) => e.status !== "ended");
-        if (ongoing.length > 0) {
-          const latest = ongoing.reduce((prev, curr) =>
-            new Date(prev.start_time) > new Date(curr.start_time) ? prev : curr
-          );
-          setLatestElection(latest);
-        }
+        if (!data || data.length === 0) return;
+
+        // Pick the most recent election that is not closed for display
+        const nonClosed = data.filter((e) => e.status !== "closed");
+        const source = nonClosed.length > 0 ? nonClosed : data;
+
+        const latest = source.reduce((prev, curr) =>
+          new Date(prev.start_time) > new Date(curr.start_time) ? prev : curr
+        );
+
+        setLatestElection(latest);
+        // User can only file candidacy during the dedicated filing window
+        setCanFile(latest.status === "filing");
       });
   }, []);
 
@@ -313,6 +320,12 @@ export default function CandidatesPage() {
       !user
     ) {
       setFormError("All fields are required except achievements!");
+      return;
+    }
+
+    // Extra safety: prevent filing outside the allowed filing period
+    if (!canFile || latestElection.status !== "filing") {
+      setFormError("Filing period is closed for this election.");
       return;
     }
 
@@ -497,7 +510,7 @@ export default function CandidatesPage() {
               </p>
             </div>
 
-            {latestElection && (
+            {latestElection && canFile && (
               <button
                 onClick={() => setIsFilingModalOpen(true)}
                 className="px-4 py-2 rounded-full bg-gradient-to-r from-[#791010] to-[#b11c1c] text-white font-medium shadow hover:shadow-lg transform hover:-translate-y-0.5 transition"

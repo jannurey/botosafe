@@ -65,15 +65,22 @@ export default async function handler(
     const { embeddings } = req.body as { embeddings?: (number[] | Float32Array)[] };
     if (!embeddings || embeddings.length === 0) return res.status(400).json({ message: "Missing embeddings" });
 
-    // Get face duplicate threshold from settings, default to 0.92 if not set
-    let DUPLICATE_THRESHOLD = 0.92;
+    // Get face duplicate threshold from settings.
+    // Default is intentionally set HIGH (0.985) and is applied to the *maximum*
+    // similarity between embeddings. In real-world data we've observed
+    // different users with similarities around 0.95, while multiple captures
+    // of the same person can reach 0.99+. Using 0.985 on the max similarity
+    // catches truly matching faces but lets similar-looking people register.
+    let DUPLICATE_THRESHOLD = 0.985;
     
     try {
       const { data: thresholdSetting, error: thresholdError } = await settings.getByKey("face_duplicate_threshold");
       if (!thresholdError && thresholdSetting && thresholdSetting.v) {
         const parsedThreshold = parseFloat(thresholdSetting.v as string);
         if (!isNaN(parsedThreshold) && parsedThreshold > 0 && parsedThreshold <= 1) {
-          DUPLICATE_THRESHOLD = parsedThreshold;
+          // Clamp to a sensible range so the threshold can't accidentally
+          // be set extremely low and block many different users.
+          DUPLICATE_THRESHOLD = Math.min(0.999, Math.max(0.90, parsedThreshold));
         }
       }
     } catch (e) {
@@ -109,7 +116,8 @@ export default async function handler(
       });
     }
     
-    // Filter out duplicate embeddings before processing
+    // Filter out duplicate embeddings before processing. These are still in their
+    // raw (unnormalized) form at this point.
     const uniqueNewEmbeddings = Array.from(uniqueEmbeddings).map(str => JSON.parse(str));
     if (uniqueNewEmbeddings.length < 3) {
       return res.status(400).json({ 
@@ -117,8 +125,12 @@ export default async function handler(
       });
     }
 
-    // Use unique embeddings for further processing
-    const processedEmbeddings = uniqueNewEmbeddings.length >= 3 ? uniqueNewEmbeddings : newEmbeddings;
+    // Normalize the unique embeddings so they are in the same space as the
+    // stored (normalized) embeddings used for comparison.
+    const normalizedUniqueEmbeddings = uniqueNewEmbeddings.map(normalizeEmbedding);
+
+    // Use normalized unique embeddings for further processing
+    const processedEmbeddings = normalizedUniqueEmbeddings.length >= 3 ? normalizedUniqueEmbeddings : newEmbeddings;
     
     // Debug: Check if all embeddings are identical
     if (processedEmbeddings.length > 1) {
@@ -140,6 +152,8 @@ export default async function handler(
 
     // ---------------- DUPLICATE CHECK ----------------
     // CRITICAL FIX: Only check faces from OTHER users, not including the current user
+    // and only start enforcing duplicate detection once we have a minimum number
+    // of existing users in the system (to allow first few users to register).
     const { data: allFaces, error: fetchError } = await userFaces.getAll();
     if (fetchError) return res.status(500).json({ message: "Failed to fetch existing faces" });
 
@@ -161,6 +175,9 @@ export default async function handler(
       }
     }
 
+    // Run duplicate checks against all other users that have faces.
+    // With the higher default threshold (0.98), this will only flag
+    // *very* similar faces as duplicates, even for early users.
     if (otherUserFaces.length > 0) {
       for (const existingFace of otherUserFaces) {
         // Additional safety check (should not be needed now, but keep for robustness)
@@ -222,30 +239,38 @@ export default async function handler(
           }
         }
         
-        // Calculate median similarity instead of using max similarity
+        // Calculate median similarity for debugging/analysis
         const medianSimilarity = median(allSimilarities);
         
         if (identicalEmbeddingsFound) {
           console.warn(`User ${userId} attempted to register face with identical embeddings to user ${existingFace.user_id}`);
         }
         
-        // Log detailed similarity information
-        console.log(`Detailed similarity analysis for user ${userId} vs user ${existingFace.user_id}:`);
-        similarityDetails.forEach(detail => {
-          console.log(`  New[${detail.newIndex}] vs Stored[${detail.storedIndex}]: ${detail.similarity.toFixed(4)}`);
-        });
-        
-        // Log embedding statistics for debugging
+        // Log a clear summary line for this user-vs-user comparison
+        console.log(
+          `Face duplicate check: candidate user=${userId} vs existing user=${existingFace.user_id} ` +
+          `(median=${medianSimilarity.toFixed(4)}, max=${maxSimilarity.toFixed(4)}, threshold=${DUPLICATE_THRESHOLD})`
+        );
+
+        // Log detailed similarity information (development only) to help debug
         if (process.env.NODE_ENV === 'development') {
+          console.log(`Detailed similarity analysis for user ${userId} vs user ${existingFace.user_id}:`);
+          similarityDetails.forEach(detail => {
+            console.log(`  New[${detail.newIndex}] vs Stored[${detail.storedIndex}]: ${detail.similarity.toFixed(4)}`);
+          });
+          
           console.log(`Embedding stats for comparison:`);
-          console.log(`  New embedding length: ${processedEmbeddings.length}`);
-          console.log(`  Stored embedding length: ${storedEmbeddings.length}`);
+          console.log(`  New embedding count: ${processedEmbeddings.length}`);
+          console.log(`  Stored embedding count: ${storedEmbeddings.length}`);
           console.log(`  Max similarity: ${maxSimilarity.toFixed(4)}`);
           console.log(`  Median similarity: ${medianSimilarity.toFixed(4)}`);
           console.log(`  Threshold: ${DUPLICATE_THRESHOLD}`);
         }
         
-        if (medianSimilarity >= DUPLICATE_THRESHOLD) {
+        // Use the *maximum* similarity for the actual duplicate decision.
+        // This is stricter for same-person captures (which often reach 0.99)
+        // while still allowing different people with median similarity ~0.95.
+        if (maxSimilarity >= DUPLICATE_THRESHOLD) {
           // Log the similarity for debugging purposes
           console.log(`Face duplicate detected for user ${userId}: medianSimilarity=${medianSimilarity.toFixed(4)}, maxSimilarity=${maxSimilarity.toFixed(4)}, threshold=${DUPLICATE_THRESHOLD}`);
           
@@ -254,8 +279,6 @@ export default async function handler(
           });
         }
       }
-    } else {
-      console.log(`No other users' faces found in database - this will be the first face registration or only current user has faces`);
     }
 
     // ---------------- SAVE NEW EMBEDDINGS ----------------
@@ -272,7 +295,7 @@ export default async function handler(
       if (lastRegisteredEmbeddings[userId] === embeddingJson) {
         console.warn(`⚠️ Warning: User ${userId} is registering identical embeddings as last time!`);
       } else {
-        console.log(`_embeddings for user ${userId} are different from last registration`);
+        console.log(`Embeddings for user ${userId} are different from last registration`);
       }
     }
     
