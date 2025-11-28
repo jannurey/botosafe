@@ -186,6 +186,12 @@ export default function AdminCandidatesPage() {
       }
     }
     
+    // For Supabase Storage files, open directly (they're public URLs with proper content types)
+    if (fileUrl.includes('/storage/v1/object/public/')) {
+      window.open(fileUrl, '_blank');
+      return;
+    }
+    
     // For Cloudinary files, redirect to our local serving endpoint
     if (fileUrl.startsWith('https://res.cloudinary.com/')) {
       // Extract the filename from the Cloudinary URL

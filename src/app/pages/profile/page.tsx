@@ -688,6 +688,12 @@ export default function ProfilePage() {
                                 }
                               }
                               
+                              // For Supabase Storage files, open directly (they're public URLs with proper content types)
+                              if (app.coc_file_url?.includes('/storage/v1/object/public/')) {
+                                window.open(app.coc_file_url, '_blank');
+                                return;
+                              }
+                              
                               // For Cloudinary files, redirect to our local serving endpoint
                               if (app.coc_file_url?.startsWith('https://res.cloudinary.com/')) {
                                 // Extract the filename from the Cloudinary URL

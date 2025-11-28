@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import formidable, { Files, File } from "formidable";
 import fs from "fs";
 import path from "path";
-import { v2 as cloudinary } from "cloudinary";
+import { supabaseAdmin, SUPABASE_BUCKET, SUPABASE_URL } from "@/configs/supabase";
 
 // Disable Next.js body parser — formidable handles it
 export const config = {
@@ -13,20 +13,6 @@ export const config = {
     sizeLimit: '10mb',
   },
 };
-
-// Check if Cloudinary is configured
-const hasCloudinaryConfig = process.env.CLOUDINARY_CLOUD_NAME && 
-                           process.env.CLOUDINARY_API_KEY && 
-                           process.env.CLOUDINARY_API_SECRET;
-
-// Configure Cloudinary only if env vars are set
-if (hasCloudinaryConfig) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-    api_key: process.env.CLOUDINARY_API_KEY!,
-    api_secret: process.env.CLOUDINARY_API_SECRET!,
-  });
-}
 
 interface UploadResponse {
   url?: string;
@@ -79,35 +65,91 @@ export default async function handler(
     }
 
     try {
-      // Always save files locally instead of using Cloudinary
-      // This ensures we can properly serve PDFs for viewing in browser
-      const uploadDir = path.join(process.cwd(), "public", "uploads", "candidates");
+      // Check if Supabase is configured
+      const hasSupabaseConfig = process.env.SUPABASE_URL && 
+                                process.env.SUPABASE_SERVICE_ROLE_KEY;
       
-      // Create upload directory if it doesn't exist
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
+      if (hasSupabaseConfig) {
+        // Use Supabase Storage for serverless environments
+        const fileExtension = path.extname(uploadedFile.originalFilename || "");
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}${fileExtension}`;
+        const filePath = `candidates/${fileName}`;
+        
+        // Read file buffer
+        const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+        
+        // Determine content type
+        const ext = fileExtension.toLowerCase();
+        const mimeTypes: Record<string, string> = {
+          '.pdf': 'application/pdf',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+        };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        
+        // Upload to Supabase Storage
+        const { data, error } = await supabaseAdmin.storage
+          .from(SUPABASE_BUCKET)
+          .upload(filePath, fileBuffer, {
+            contentType,
+            upsert: false,
+          });
+        
+        if (error) {
+          throw new Error(`Supabase upload failed: ${error.message}`);
+        }
+        
+        // Delete temporary file
+        try {
+          fs.unlinkSync(uploadedFile.filepath);
+        } catch (unlinkErr) {
+          console.warn("⚠️ Failed to delete temp file:", unlinkErr);
+        }
+        
+        // Return public URL (bucket must be public)
+        // If you want to use a private bucket, uncomment the signed URL code below
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${filePath}`;
+        res.status(200).json({ url: publicUrl });
+        
+        // Alternative: For private buckets, use signed URLs (uncomment below)
+        // const { data: signedData, error: signedError } = await supabaseAdmin.storage
+        //   .from(SUPABASE_BUCKET)
+        //   .createSignedUrl(filePath, 3600); // URL valid for 1 hour
+        // if (signedError) {
+        //   throw new Error(`Failed to create signed URL: ${signedError.message}`);
+        // }
+        // res.status(200).json({ url: signedData.signedUrl });
+      } else {
+        // Fallback to local storage for development (if filesystem is writable)
+        const uploadDir = path.join(process.cwd(), "public", "uploads", "candidates");
+        
+        // Create upload directory if it doesn't exist
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        
+        // Generate unique filename with original extension
+        const fileExtension = path.extname(uploadedFile.originalFilename || "");
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}${fileExtension}`;
+        const newPath = path.join(uploadDir, fileName);
+        
+        // Copy file from temp location to uploads directory
+        const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+        fs.writeFileSync(newPath, fileBuffer);
+        
+        // Delete temporary file
+        try {
+          fs.unlinkSync(uploadedFile.filepath);
+        } catch (unlinkErr) {
+          console.warn("⚠️ Failed to delete temp file:", unlinkErr);
+        }
+        
+        // Return URL relative to public directory
+        const url = `/uploads/candidates/${fileName}`;
+        res.status(200).json({ url });
       }
-      
-      // Generate unique filename with original extension
-      const fileExtension = path.extname(uploadedFile.originalFilename || "");
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}${fileExtension}`;
-      const newPath = path.join(uploadDir, fileName);
-      
-      // Copy file from temp location to uploads directory (instead of renaming)
-      // This avoids cross-device link issues on Windows
-      const fileBuffer = fs.readFileSync(uploadedFile.filepath);
-      fs.writeFileSync(newPath, fileBuffer);
-      
-      // Delete temporary file
-      try {
-        fs.unlinkSync(uploadedFile.filepath);
-      } catch (unlinkErr) {
-        console.warn("⚠️ Failed to delete temp file:", unlinkErr);
-      }
-      
-      // Return URL relative to public directory
-      const url = `/uploads/candidates/${fileName}`;
-      res.status(200).json({ url });
     } catch (uploadErr) {
       console.error("❌ Upload error:", uploadErr);
       const errorMessage = uploadErr instanceof Error ? uploadErr.message : "Upload failed";
