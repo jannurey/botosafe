@@ -295,6 +295,13 @@ const VotePage: React.FC = () => {
         const candidates: Candidate[] = result.candidates || [];
         const latest = candidates.filter((c) => c.election_id === electionId);
 
+        // Debug logging to check candidate data
+        if (latest.length > 0) {
+          console.log("🔍 Vote page - Sample candidate data:", latest[0]);
+          console.log("🔍 Vote page - Candidate fullname:", latest[0].fullname);
+          console.log("🔍 Vote page - Candidate position_name:", latest[0].position_name);
+        }
+
         const grouped: GroupedCandidates = {};
         latest.forEach((candidate) => {
           const key = `${candidate.position_id}:${candidate.position_name}`;
@@ -374,8 +381,8 @@ const VotePage: React.FC = () => {
           const payload = { userId, votes: votesForApi };
           localStorage.setItem("pendingVote", JSON.stringify(payload));
           
-          // Redirect to face verification page for voting
-          router.push("/signin/face-scan-vote");
+          // Redirect to OTP verification page for voting
+          router.push("/signin/verify-otp-vote");
           return;
         } else {
           // Token expired, clear it
@@ -413,8 +420,8 @@ const VotePage: React.FC = () => {
       const payload = { userId, votes: votesForApi };
       localStorage.setItem("pendingVote", JSON.stringify(payload));
       
-      // Redirect to face verification page for voting
-      router.push("/signin/face-scan-vote");
+      // Redirect to OTP verification page for voting
+      router.push("/signin/verify-otp-vote");
     })
     .catch(error => {
       console.error("Authentication error:", error);
@@ -997,7 +1004,7 @@ const VotePage: React.FC = () => {
                           React.createElement(
                             "h3",
                             { className: "text-white font-bold text-sm line-clamp-2 drop-shadow-lg" },
-                            candidate.fullname
+                            candidate.fullname || `Candidate ${candidate.id}`
                           )
                         )
                       ),

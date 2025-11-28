@@ -96,7 +96,28 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Auth cookie present — allow (server-side verification could be added here)
+  // ✅ SECURITY: Basic token validation in middleware
+  // Note: Full validation happens in API endpoints, but we do basic checks here
+  if (authToken) {
+    try {
+      // Basic JWT structure check (not full verification - that's done in API)
+      const parts = authToken.split('.');
+      if (parts.length !== 3) {
+        // Invalid JWT format - redirect to login
+        const loginUrl = new URL("/signin/login", req.url);
+        loginUrl.searchParams.set("returnTo", pathname);
+        return NextResponse.redirect(loginUrl);
+      }
+    } catch {
+      // If parsing fails, redirect to login
+      const loginUrl = new URL("/signin/login", req.url);
+      loginUrl.searchParams.set("returnTo", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
+  // Auth cookie present and has valid format — allow
+  // Full token verification happens in API endpoints for security
   return NextResponse.next();
 }
 

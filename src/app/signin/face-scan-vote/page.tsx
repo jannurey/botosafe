@@ -11,6 +11,8 @@ import FaceModelManager from "@/lib/face-models/FaceModelManager";
 
 type ProgressState = {
   blink: boolean;
+  mouth: boolean;
+  head: boolean;
 };
 
 type StepType = "scanning" | "done";
@@ -37,6 +39,18 @@ if (typeof window === "undefined") {
 export default function FaceScanVotePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const router = useRouter();
+  
+  // Liveness detection state - use refs to persist across renders
+  const livenessStateRef = useRef({
+    previousEAR: null as number | null,
+    previousMAR: null as number | null,
+    previousHeadPose: null as { pitch: number; yaw: number; roll: number } | null,
+    blinkDetected: false,
+    mouthDetected: false,
+    headDetected: false,
+    earHistory: [] as number[],
+    marHistory: [] as number[],
+  });
 
   const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState("Initializing...");
@@ -45,6 +59,8 @@ export default function FaceScanVotePage() {
   const [step, setStep] = useState<StepType>("scanning");
   const [progress, setProgress] = useState<ProgressState>({
     blink: false,
+    mouth: false,
+    head: false,
   });
   const [verifying, setVerifying] = useState(false);
   const [livenessDone, setLivenessDone] = useState(false);
@@ -147,12 +163,46 @@ export default function FaceScanVotePage() {
     }
   }, []);
 
-  // --- EAR calculation ---
+  // --- EAR calculation (Eye Aspect Ratio for blink detection) ---
   const eyeAspectRatio = (eye: FaceAPI.Point[]): number => {
     const v1 = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
     const v2 = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
     const h = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
     return (v1 + v2) / (2 * h);
+  };
+
+  // --- MAR calculation (Mouth Aspect Ratio for mouth movement detection) ---
+  const mouthAspectRatio = (mouth: FaceAPI.Point[]): number => {
+    const v = Math.hypot(mouth[13].x - mouth[19].x, mouth[13].y - mouth[19].y);
+    const h = Math.hypot(mouth[0].x - mouth[6].x, mouth[0].y - mouth[6].y);
+    return v / h;
+  };
+
+  // --- Head pose calculation (for head movement detection) ---
+  const calculateHeadPose = (landmarks: FaceAPI.FaceLandmarks68): { pitch: number; yaw: number; roll: number } => {
+    const nose = landmarks.positions[30];
+    const leftEye = landmarks.positions[36];
+    const rightEye = landmarks.positions[45];
+    const leftMouth = landmarks.positions[48];
+    const rightMouth = landmarks.positions[54];
+
+    // Calculate angles (simplified)
+    const eyeCenterX = (leftEye.x + rightEye.x) / 2;
+    const eyeCenterY = (leftEye.y + rightEye.y) / 2;
+    const mouthCenterX = (leftMouth.x + rightMouth.x) / 2;
+    const mouthCenterY = (leftMouth.y + rightMouth.y) / 2;
+
+    const dx = rightEye.x - leftEye.x;
+    const dy = rightEye.y - leftEye.y;
+    const roll = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    const verticalDist = Math.abs(nose.y - eyeCenterY);
+    const horizontalDist = Math.abs(rightEye.x - leftEye.x);
+    const pitch = Math.atan2(verticalDist, horizontalDist) * (180 / Math.PI);
+
+    const yaw = Math.atan2(nose.x - eyeCenterX, horizontalDist) * (180 / Math.PI);
+
+    return { pitch, yaw, roll };
   };
 
   // --- Stop camera ---
@@ -173,12 +223,23 @@ export default function FaceScanVotePage() {
   const resetCheck = useCallback((): void => {
     setLivenessDone(false);
     setStep("scanning");
-    setProgress({ blink: false });
+    setProgress({ blink: false, mouth: false, head: false });
     setScanTimer(0);
     setIsScanning(false);
     setShowScanAgain(false); // Hide scan again button
     setCapturedFaceData(null); // Clear captured face data
     setErrorMessages([]); // Clear error messages directly
+    // Reset liveness state ref
+    livenessStateRef.current = {
+      previousEAR: null,
+      previousMAR: null,
+      previousHeadPose: null,
+      blinkDetected: false,
+      mouthDetected: false,
+      headDetected: false,
+      earHistory: [],
+      marHistory: [],
+    };
     // Don't stop camera immediately on reset to avoid AbortError
     // Camera will be stopped when component unmounts or when needed
   }, []);
@@ -309,6 +370,7 @@ export default function FaceScanVotePage() {
 
             const tokenRes = await fetch("/api/generate-vote-token", {
               method: "POST",
+              credentials: "include", // Ensure authentication cookies are sent
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ userId: userId, electionId }), // Use authenticated userId
             });
@@ -525,13 +587,123 @@ export default function FaceScanVotePage() {
           .withFaceLandmarks();
 
         if (detection && !livenessDone) {
-          // Simple detection - just check if face is detected
+          const landmarks = detection.landmarks;
+          
+          // Face detected, start scanning if not started
           if (!scanningStarted) {
-            // Face detected, start scanning
             scanningStarted = true;
             setIsScanning(true);
             setScanTimer(0);
-            setStatus("📸 Face detected! Stay still for 3 seconds...");
+            setStatus("📸 Face detected! Please blink, open your mouth, and move your head slightly...");
+            // Reset liveness state
+            livenessStateRef.current = {
+              previousEAR: null,
+              previousMAR: null,
+              previousHeadPose: null,
+              blinkDetected: false,
+              mouthDetected: false,
+              headDetected: false,
+              earHistory: [],
+              marHistory: [],
+            };
+          }
+
+          // Perform liveness checks
+          if (isScanning && !livenessDone) {
+            const state = livenessStateRef.current;
+            
+            // Get eye landmarks (left and right)
+            const leftEye = landmarks.getLeftEye();
+            const rightEye = landmarks.getRightEye();
+            const mouth = landmarks.getMouth();
+
+            // Calculate EAR for both eyes
+            const leftEAR = eyeAspectRatio(leftEye);
+            const rightEAR = eyeAspectRatio(rightEye);
+            const avgEAR = (leftEAR + rightEAR) / 2;
+
+            // Calculate MAR
+            const mar = mouthAspectRatio(mouth);
+
+            // Calculate head pose
+            const headPose = calculateHeadPose(landmarks);
+
+            // Store history for blink detection (need to detect eye closing then opening)
+            state.earHistory.push(avgEAR);
+            if (state.earHistory.length > 15) state.earHistory.shift(); // Keep last 15 frames for better detection
+
+            state.marHistory.push(mar);
+            if (state.marHistory.length > 15) state.marHistory.shift();
+
+            // Blink detection: Very simple approach - match the working pattern from other pages
+            const EAR_THRESHOLD = 0.25; // Eye closed threshold (same as other pages)
+            
+            if (!state.blinkDetected) {
+              // Store EAR for comparison
+              const previousEAR = state.previousEAR;
+              
+              // Debug logging every 20 frames to see what's happening
+              if (!state.earHistory.length || state.earHistory.length % 20 === 0) {
+                console.log("🔍 Blink detection check:", {
+                  currentEAR: avgEAR.toFixed(3),
+                  previousEAR: previousEAR ? previousEAR.toFixed(3) : "null",
+                  belowThreshold: avgEAR < EAR_THRESHOLD,
+                  wasAbove: previousEAR ? previousEAR > EAR_THRESHOLD : false
+                });
+              }
+              
+              // Simple blink detection: 
+              // If current EAR is below threshold AND previous EAR was above threshold
+              // This means eyes went from open to closed = blink!
+              if (previousEAR !== null && avgEAR < EAR_THRESHOLD && previousEAR > EAR_THRESHOLD + 0.02) {
+                state.blinkDetected = true;
+                setProgress(prev => ({ ...prev, blink: true }));
+                setStatus("✅ Blink detected! Now open your mouth...");
+                console.log("✅✅✅ BLINK DETECTED! Current EAR:", avgEAR.toFixed(3), "Previous EAR:", previousEAR.toFixed(3));
+                // Clear history
+                state.earHistory = [];
+              }
+              
+              // Always update previous EAR for next comparison
+              state.previousEAR = avgEAR;
+              
+              // Also store in history for debugging
+              state.earHistory.push(avgEAR);
+              if (state.earHistory.length > 20) state.earHistory.shift();
+            }
+
+            // Mouth movement detection: MAR increases (mouth opens)
+            if (state.marHistory.length >= 5 && state.blinkDetected && !state.mouthDetected) {
+              const minMAR = Math.min(...state.marHistory);
+              const maxMAR = Math.max(...state.marHistory);
+              const currentMAR = state.marHistory[state.marHistory.length - 1];
+              
+              // Mouth opened if MAR increased significantly
+              if (maxMAR > minMAR * 1.3 && currentMAR > minMAR * 1.2) {
+                state.mouthDetected = true;
+                setProgress(prev => ({ ...prev, mouth: true }));
+                setStatus("✅ Mouth movement detected! Now move your head slightly...");
+              }
+            }
+
+            // Head movement detection: head pose changes
+            if (state.previousHeadPose && state.blinkDetected && state.mouthDetected && !state.headDetected) {
+              const pitchDiff = Math.abs(headPose.pitch - state.previousHeadPose.pitch);
+              const yawDiff = Math.abs(headPose.yaw - state.previousHeadPose.yaw);
+              const rollDiff = Math.abs(headPose.roll - state.previousHeadPose.roll);
+              
+              // Head moved if any angle changed significantly
+              if (pitchDiff > 5 || yawDiff > 5 || rollDiff > 5) {
+                state.headDetected = true;
+                setProgress(prev => ({ ...prev, head: true }));
+                setStatus("✅ Head movement detected! All checks complete. Stay still for 3 seconds...");
+              }
+            }
+
+            // Update previous values
+            state.previousEAR = avgEAR;
+            state.previousMAR = mar;
+            state.previousHeadPose = headPose;
           }
         } else {
           // No face detected
@@ -540,7 +712,19 @@ export default function FaceScanVotePage() {
             scanningStarted = false;
             setIsScanning(false);
             setScanTimer(0);
+            setProgress({ blink: false, mouth: false, head: false });
             setStatus("⚠️ Face lost. Please stay in frame.");
+            // Reset liveness state
+            livenessStateRef.current = {
+              previousEAR: null,
+              previousMAR: null,
+              previousHeadPose: null,
+              blinkDetected: false,
+              mouthDetected: false,
+              headDetected: false,
+              earHistory: [],
+              marHistory: [],
+            };
           }
         }
         
@@ -596,9 +780,12 @@ export default function FaceScanVotePage() {
     };
   }, [modelsLoaded, faceapi, livenessDone]); // Removed problematic dependencies
 
-  // Scan timer effect
+  // Scan timer effect - Only start countdown after all liveness checks pass
   useEffect(() => {
-    if (step === "scanning" && isScanning && !livenessDone && !submittingVote) {
+    // Only start countdown if all liveness checks are complete
+    const allChecksComplete = progress.blink && progress.mouth && progress.head;
+    
+    if (step === "scanning" && isScanning && !livenessDone && !submittingVote && allChecksComplete) {
       const interval = setInterval(() => {
         setScanTimer((prev) => {
           const newTime = prev + 0.1;
@@ -654,8 +841,11 @@ export default function FaceScanVotePage() {
       }, 100); // Update every 100ms for smooth progress
 
       return () => clearInterval(interval);
+    } else if (step === "scanning" && isScanning && !allChecksComplete) {
+      // Reset timer if liveness checks aren't complete
+      setScanTimer(0);
     }
-  }, [step, isScanning, livenessDone, submittingVote, faceapi, analyzeLighting, addErrorMessage, resetCheck]);
+  }, [step, isScanning, livenessDone, submittingVote, faceapi, analyzeLighting, addErrorMessage, resetCheck, progress]);
 
   // Trigger verification when face data is captured
   useEffect(() => {
@@ -699,8 +889,10 @@ export default function FaceScanVotePage() {
         React.createElement(
           "p",
           { className: "text-center text-gray-700 mb-4" },
-          step === "scanning" && isScanning
+          step === "scanning" && isScanning && progress.blink && progress.mouth && progress.head
             ? `Stay in frame: ${Math.ceil(SCAN_DURATION - scanTimer)}s remaining`
+            : step === "scanning" && isScanning
+            ? "Complete the liveness checks above"
             : "Position your face in the camera"
         ),
         // Error Messages Queue
@@ -820,19 +1012,35 @@ export default function FaceScanVotePage() {
                 "bg-white/90 rounded-lg shadow p-3 border border-gray-300",
             },
             React.createElement(
-              "p",
-              { className: progress.blink ? "text-green-600" : "text-gray-600" },
-              progress.blink ? "✅ Blink" : "⬜ Blink"
+              "div",
+              { className: "space-y-2" },
+              React.createElement(
+                "div",
+                { className: progress.blink ? "text-green-600" : "text-gray-600" },
+                progress.blink ? "✅ Blink" : "⬜ Blink"
+              ),
+              React.createElement(
+                "div",
+                { className: progress.mouth ? "text-green-600" : "text-gray-600" },
+                progress.mouth ? "✅ Mouth Movement" : "⬜ Mouth Movement"
+              ),
+              React.createElement(
+                "div",
+                { className: progress.head ? "text-green-600" : "text-gray-600" },
+                progress.head ? "✅ Head Movement" : "⬜ Head Movement"
+              )
             )
           ),
           React.createElement(
             "p",
             { className: "mt-4 text-center w-full font-semibold text-gray-700" },
-            step === "scanning" && isScanning
-              ? `📸 Scanning... ${Math.ceil(SCAN_DURATION - scanTimer)}s`
-              : step === "done"
-              ? "✅ Verification complete!"
-              : "👁 Please look at the camera"
+          step === "scanning" && isScanning && progress.blink && progress.mouth && progress.head
+            ? `📸 Scanning... ${Math.ceil(SCAN_DURATION - scanTimer)}s`
+            : step === "scanning" && isScanning
+            ? "⏳ Complete liveness checks above..."
+            : step === "done"
+            ? "✅ Verification complete!"
+            : "👁 Please look at the camera"
           ),
           // Lighting Message
           lightingMessage
@@ -870,7 +1078,7 @@ export default function FaceScanVotePage() {
                     // Reset state
                     setShowScanAgain(false);
                     setStep("scanning");
-                    setProgress({ blink: false });
+                    setProgress({ blink: false, mouth: false, head: false });
                     setScanTimer(0);
                     setIsScanning(false);
                     setStatus("📸 Camera ready...");

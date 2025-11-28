@@ -60,9 +60,9 @@ interface SupabaseCandidateRow {
   coc_file_url?: string;
   status: string;
   created_at: string;
-  users?: { fullname: string } | { fullname: string }[] | null;
-  elections?: { title: string } | { title: string }[] | null;
-  positions?: { name: string } | { name: string }[] | null;
+  user?: { fullname: string } | Array<{ fullname: string }> | null;
+  election?: { title: string } | Array<{ title: string }> | null;
+  position?: { name: string } | Array<{ name: string }> | null;
   candidate_achievements?: Array<{
     id: number;
     title: string;
@@ -263,13 +263,13 @@ export default async function handler(
           coc_file_url,
           status,
           created_at,
-          users!candidates_user_id_fkey (
+          user:users (
             fullname
           ),
-          elections!candidates_election_id_fkey (
+          election:elections (
             title
           ),
-          positions!candidates_position_id_fkey (
+          position:positions (
             name
           ),
           candidate_achievements (
@@ -292,10 +292,16 @@ export default async function handler(
         res.status(500).json({ error: "Database error" });
         return;
       }
+
+      if (!rows || rows.length === 0) {
+        res.status(200).json([]);
+        return;
+      }
       
       // Raw Supabase rows
+      console.log("🔍 Raw Supabase rows sample:", JSON.stringify(rows[0], null, 2));
 
-      const candidates: CandidateResponse[] = rows.map((row: SupabaseCandidateRow) => {
+      const candidates: CandidateResponse[] = rows.map((row: SupabaseCandidateRow, index: number) => {
         // Raw Supabase row
         
         // Format achievements array
@@ -310,9 +316,44 @@ export default async function handler(
         }
         
         // Handle both object and array responses from Supabase
-        const userData = Array.isArray(row.users) ? row.users[0] : row.users;
-        const electionData = Array.isArray(row.elections) ? row.elections[0] : row.elections;
-        const positionData = Array.isArray(row.positions) ? row.positions[0] : row.positions;
+        // For foreign key relationships, Supabase can return either a single object or an array
+        let userData = null;
+        if (row.user) {
+          if (Array.isArray(row.user)) {
+            userData = row.user.length > 0 ? row.user[0] : null;
+          } else if (typeof row.user === 'object') {
+            userData = row.user;
+          }
+        }
+        
+        let electionData = null;
+        if (row.election) {
+          if (Array.isArray(row.election)) {
+            electionData = row.election.length > 0 ? row.election[0] : null;
+          } else if (typeof row.election === 'object') {
+            electionData = row.election;
+          }
+        }
+        
+        let positionData = null;
+        if (row.position) {
+          if (Array.isArray(row.position)) {
+            positionData = row.position.length > 0 ? row.position[0] : null;
+          } else if (typeof row.position === 'object') {
+            positionData = row.position;
+          }
+        }
+        
+        // Debug logging for first candidate
+        if (index === 0) {
+          console.log("🔍 Processing first candidate:");
+          console.log("  - row.user type:", typeof row.user, "value:", JSON.stringify(row.user));
+          console.log("  - row.election type:", typeof row.election, "value:", JSON.stringify(row.election));
+          console.log("  - row.position type:", typeof row.position, "value:", JSON.stringify(row.position));
+          console.log("  - userData:", userData);
+          console.log("  - electionData:", electionData);
+          console.log("  - positionData:", positionData);
+        }
         
         const result = {
           id: row.id,
@@ -329,6 +370,11 @@ export default async function handler(
           status: row.status,
           created_at: row.created_at
         };
+        
+        // Debug logging for first candidate result
+        if (index === 0) {
+          console.log("🔍 Transformed candidate result:", JSON.stringify(result, null, 2));
+        }
         
         // Transformed candidate
         return result;
@@ -533,14 +579,43 @@ export default async function handler(
         }
 
         const candidate = newCandidateRows[0];
+        
+        // Handle both object and array responses from Supabase
+        let userData = null;
+        if (candidate.user) {
+          if (Array.isArray(candidate.user)) {
+            userData = candidate.user.length > 0 ? candidate.user[0] : null;
+          } else if (typeof candidate.user === 'object') {
+            userData = candidate.user;
+          }
+        }
+        
+        let electionData = null;
+        if (candidate.election) {
+          if (Array.isArray(candidate.election)) {
+            electionData = candidate.election.length > 0 ? candidate.election[0] : null;
+          } else if (typeof candidate.election === 'object') {
+            electionData = candidate.election;
+          }
+        }
+        
+        let positionData = null;
+        if (candidate.position) {
+          if (Array.isArray(candidate.position)) {
+            positionData = candidate.position.length > 0 ? candidate.position[0] : null;
+          } else if (typeof candidate.position === 'object') {
+            positionData = candidate.position;
+          }
+        }
+        
         const formattedCandidate = {
           id: candidate.id,
           user_id: candidate.user_id,
-          fullname: Array.isArray(candidate.user) && candidate.user.length > 0 ? candidate.user[0].fullname : '',
+          fullname: userData?.fullname || '',
           election_id: candidate.election_id,
-          election_title: Array.isArray(candidate.election) && candidate.election.length > 0 ? candidate.election[0].title : '',
+          election_title: electionData?.title || '',
           position_id: candidate.position_id,
-          position_name: Array.isArray(candidate.position) && candidate.position.length > 0 ? candidate.position[0].name : '',
+          position_name: positionData?.name || '',
           achievements: [],
           photo_url: candidate.photo_url || undefined,
           partylist: candidate.partylist || undefined,

@@ -56,9 +56,9 @@ interface SupabaseCandidateRow {
   coc_file_url?: string;
   status: string;
   created_at: string;
-  user?: Array<{ fullname: string; approval_status: string; user_status: string }>;
-  election?: Array<{ title: string }>;
-  position?: Array<{ name: string }>;
+  user?: { fullname: string; approval_status: string; user_status: string } | Array<{ fullname: string; approval_status: string; user_status: string }> | null;
+  election?: { title: string } | Array<{ title: string }> | null;
+  position?: { name: string } | Array<{ name: string }> | null;
   candidate_achievements?: Array<{
     id: number;
     title: string;
@@ -119,7 +119,7 @@ export default async function handler(
     }
 
     // Transform the data to match the expected structure
-    const candidates: ApprovedCandidate[] = rows.map((row) => {
+    const candidates: ApprovedCandidate[] = rows.map((row, index) => {
       // Format achievements array
       let achievements: Achievement[] = [];
       if (row.candidate_achievements && Array.isArray(row.candidate_achievements)) {
@@ -131,14 +131,54 @@ export default async function handler(
         }));
       }
 
+      // Handle both object and array responses from Supabase
+      // For foreign key relationships, Supabase can return either a single object or an array
+      let userData = null;
+      if (row.user) {
+        if (Array.isArray(row.user)) {
+          userData = row.user.length > 0 ? row.user[0] : null;
+        } else if (typeof row.user === 'object') {
+          userData = row.user;
+        }
+      }
+      
+      let electionData = null;
+      if (row.election) {
+        if (Array.isArray(row.election)) {
+          electionData = row.election.length > 0 ? row.election[0] : null;
+        } else if (typeof row.election === 'object') {
+          electionData = row.election;
+        }
+      }
+      
+      let positionData = null;
+      if (row.position) {
+        if (Array.isArray(row.position)) {
+          positionData = row.position.length > 0 ? row.position[0] : null;
+        } else if (typeof row.position === 'object') {
+          positionData = row.position;
+        }
+      }
+
+      // Debug logging for first candidate
+      if (index === 0) {
+        console.log("🔍 Approved candidates - Processing first candidate:");
+        console.log("  - row.user type:", typeof row.user, "value:", JSON.stringify(row.user));
+        console.log("  - row.election type:", typeof row.election, "value:", JSON.stringify(row.election));
+        console.log("  - row.position type:", typeof row.position, "value:", JSON.stringify(row.position));
+        console.log("  - userData:", userData);
+        console.log("  - electionData:", electionData);
+        console.log("  - positionData:", positionData);
+      }
+
       return {
         id: row.id,
         user_id: row.user_id,
-        fullname: (row.user && row.user.length > 0) ? row.user[0].fullname : '',
+        fullname: userData?.fullname || '',
         election_id: row.election_id,
-        election_title: (row.election && row.election.length > 0) ? row.election[0].title : '',
+        election_title: electionData?.title || '',
         position_id: row.position_id,
-        position_name: (row.position && row.position.length > 0) ? row.position[0].name : '',
+        position_name: positionData?.name || '',
         achievements: achievements,
         photo_url: row.photo_url || undefined,
         partylist: row.partylist || undefined,

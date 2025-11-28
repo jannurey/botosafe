@@ -45,6 +45,7 @@ export default function CandidatesPage() {
   const [latestElection, setLatestElection] = useState<Election | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [voteCounts, setVoteCounts] = useState<Record<number, number>>({});
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isFilingModalOpen, setIsFilingModalOpen] = useState(false);
@@ -219,14 +220,19 @@ export default function CandidatesPage() {
     fetch("/api/candidates")
       .then((res) => res.json())
       .then((data: Candidate[]) => {
+        console.log("🔍 Fetched candidates data:", data);
+        console.log("🔍 Sample candidate:", data[0]);
+        
         // Fetched candidates
-        setCandidates(
-          data.filter(
-            (c) =>
-              c.status === "approved" && c.election_id === latestElection.id
-          )
+        const filtered = data.filter(
+          (c) =>
+            c.status === "approved" && c.election_id === latestElection.id
         );
-        // Filtered candidates
+        
+        console.log("🔍 Filtered candidates:", filtered);
+        console.log("🔍 Sample filtered candidate:", filtered[0]);
+        
+        setCandidates(filtered);
 
         if (user) {
           const filed = data.some(
@@ -234,6 +240,21 @@ export default function CandidatesPage() {
           );
           setAlreadyFiled(filed);
         }
+      })
+      .catch((error) => {
+        console.error("❌ Error fetching candidates:", error);
+      });
+
+    // Fetch vote counts for this election
+    fetch(`/api/candidates/vote-counts?election_id=${latestElection.id}`)
+      .then((res) => res.json())
+      .then((data: Record<number, number> | { error: string }) => {
+        if (!('error' in data)) {
+          setVoteCounts(data);
+        }
+      })
+      .catch((error) => {
+        console.error("❌ Error fetching vote counts:", error);
       });
   }, [latestElection, user]);
 
@@ -291,8 +312,10 @@ export default function CandidatesPage() {
   // --- group candidates ---
   const candidatesByPosition = candidates.reduce(
     (acc: Record<string, Candidate[]>, candidate) => {
-      if (!acc[candidate.position_name]) acc[candidate.position_name] = [];
-      acc[candidate.position_name].push(candidate);
+      // Use position_name if available, otherwise use a fallback
+      const positionKey = candidate.position_name || `Position ${candidate.position_id}`;
+      if (!acc[positionKey]) acc[positionKey] = [];
+      acc[positionKey].push(candidate);
       return acc;
     },
     {}
@@ -579,9 +602,11 @@ export default function CandidatesPage() {
                         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                         <div className="absolute left-4 bottom-3 text-white">
                           <h3 className="text-lg font-bold drop-shadow">
-                            {c.fullname}
+                            {c.fullname || `Candidate ${c.id}`}
                           </h3>
-                          <p className="text-sm drop-shadow">{c.position_name}</p>
+                          <p className="text-sm drop-shadow">
+                            {c.position_name || `Position ${c.position_id}`}
+                          </p>
                         </div>
                         {c.partylist && (
                           <div className="absolute top-3 right-3 bg-[#791010]/80 text-white text-xs font-semibold px-2 py-1 rounded-full">
@@ -594,9 +619,14 @@ export default function CandidatesPage() {
                           <span className="text-sm text-gray-600">
                             {c.election_title}
                           </span>
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                            {c.achievements?.length || 0} achievements
-                          </span>
+                          <div className="flex gap-2">
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                              {c.achievements?.length || 0} achievements
+                            </span>
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
+                              {voteCounts[c.id] || 0} {voteCounts[c.id] === 1 ? 'vote' : 'votes'}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </motion.div>
@@ -646,13 +676,13 @@ export default function CandidatesPage() {
                         </div>
                         <div>
                           <h2 className="text-2xl font-bold">
-                            {selectedCandidate.fullname}
+                            {selectedCandidate.fullname || `Candidate ${selectedCandidate.id}`}
                           </h2>
                           <p className="text-lg opacity-90">
-                            {selectedCandidate.position_name}
+                            {selectedCandidate.position_name || `Position ${selectedCandidate.position_id}`}
                           </p>
                           <p className="text-sm opacity-80 mt-1">
-                            {selectedCandidate.election_title}
+                            {selectedCandidate.election_title || 'Election'}
                           </p>
                         </div>
                       </div>

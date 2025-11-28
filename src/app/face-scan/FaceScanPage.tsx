@@ -128,6 +128,7 @@ export default function FaceScanVotePage() {
 
             const tokenRes = await fetch("/api/generate-vote-token", {
               method: "POST",
+              credentials: "include", // Ensure authentication cookies are sent
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ userId: userId, electionId }), // Use authenticated userId
             });
